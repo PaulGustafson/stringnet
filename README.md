@@ -1,7 +1,7 @@
 # stringnet
-Haskell library for doing stringnet calculations 
+Haskell library for stringnet calculations 
 
-Currently, the program computes the representation of a braid generator in the Turaev-Viro-Barrett-Westbury 
+Currently, it computes the representation of a braid generator in the Turaev-Viro-Barrett-Westbury 
 TQFT representation of the braid group associated to an arbitrary spherical category.  
 
 References and notes
@@ -12,7 +12,7 @@ References and notes
    
  * [Finiteness for Mapping Class Group Representations from Twisted Dijkgraaf-Witten Theory]
    (https://arxiv.org/abs/1610.06069), Paul Gustafson. 
-   The figures in this paper outline the local moves needed to compute the representations 
+   The figures in this paper give (most of) the local moves for computing the representations 
    of mapping class group generators
    
 Author

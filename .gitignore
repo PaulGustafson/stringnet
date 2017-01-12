@@ -1,0 +1,8 @@
+TAGS
+*~
+*.hi
+*.ho
+*.o
+.depends-made
+.cabal-sandbox
+cabal.sandbox.config

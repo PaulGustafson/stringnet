@@ -1,7 +1,6 @@
--- 
--- This program calculates the representation of the braid move as shown in
--- Table 3 of the Finiteness for DW MCG reps paper in terms of the
--- structural morphisms of a spherical category.
+-- This program calculates the TVBW representation of the braid generator
+-- in terms of the structural morphisms of a spherical category.
+-- To do this, it uses the follows Table 3 of the Finiteness for DW MCG reps paper.
 --
 -- We encode a stringnet as a marked CW-complex.
 -- For now, all duals are right duals.

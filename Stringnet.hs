@@ -1,22 +1,23 @@
-
--- Encode a stringnet as a marked CW-complex.
--- For now, we only use right duals.
+-- 
+-- This program calculates the representation of the braid move as shown in
+-- Table 3 of the Finiteness for DW MCG reps paper in terms of the
+-- structural morphisms of a spherical category.
 --
--- TODO: Calculate an actual R-matrix.
+-- We encode a stringnet as a marked CW-complex.
+-- For now, all duals are right duals.
+--
+--
+-- TODO: Calculate an actual R-matrix of a simple TY category.
 --
 -- TODO: Style refactoring
 --     - consistent parameter naming, e.g. v0, d0
 --     - consistent use of State TwoComplex
--- 
--- MAYBE: add left duals
 --
--- TODO: Refactor interior TC methods into State methods
+-- TODO: unit tests
 --
--- TODO: Refactor using Simplex n
---
--- Ideas: Make a LocalMoves type.  
--- Should I be function-centric instead of TwoComplex-centric?
--- For example, can I pull morphismLabel out?
+-- Ideas: Make a LocalMoves type.
+--        Add left duals
+--        Refactor using Simplex n
 --
 
 module Stringnet where
@@ -28,8 +29,6 @@ import qualified Data.Tree as T
   
 
 -- Left and right refer to positions before the braiding operation
--- TODO: Separate into interior vertex and puncture types
-
 data Puncture = LeftPuncture | RightPuncture
   deriving (Show, Eq)
 
@@ -41,13 +40,12 @@ data Vertex = Punc Puncture | IV IVertex
   deriving (Show, Eq)
 
 
--- TODO: rename to BasicEdge and make Edge = State TwoComplex BasicEdge
 -- Orientations of initial edges are given by arrows in the figures in the paper
 data Edge =
   -- initial edges
   LeftLoop | RightLoop | LeftLeg | RightLeg
 
-  -- result of adding coev vertex (--(e)--> (coev e) --(e)-->
+  -- result of adding coev vertex (--(e)--> (coev e) --(e)-->)
   | FirstHalf Edge | SecondHalf Edge
 
   -- connects the start of the two edges with a 1 in the disk
@@ -74,7 +72,7 @@ data Tree a = Leaf a | Node (Tree a) (Tree a)
             deriving (Eq, Show)
 
 
-data TwoComplex = TwoComplex
+data Stringnet = Stringnet
                   { vertices      :: ![IVertex]
                   , edges         :: ![Edge]
                   , disks         :: ![Disk]
@@ -83,7 +81,7 @@ data TwoComplex = TwoComplex
                   -- form a cycle (the end point of an edge should be the
                   -- the starting point of the next edges).  Additionally,
                   -- the edges should either lie in the edges of the
-                  -- TwoComplex or be the reverse of such an edge.
+                  -- Stringnet or be the reverse of such an edge.
                   -- CCW ordering.
                   , perimeter     :: !(Disk -> [Edge])
 
@@ -167,26 +165,26 @@ initialStart e = (initialEndpoints e) !! 0
 initialEnd :: Edge -> Vertex
 initialEnd e = (initialEndpoints e) !! 1
 
--- TODO: maybe put this into TwoComplex, to make parallel with perimeter
+-- TODO: maybe put this into Stringnet, to make parallel with perimeter
 --       also, eliminate "image"
-endpoints :: Edge -> TwoComplex -> [Vertex]
+endpoints :: Edge -> Stringnet -> [Vertex]
 endpoints e tc = map (imageVertex tc) (initialEndpoints e)
 
 -- Monadic versions of methods
-edgeTreeM :: Vertex -> State TwoComplex (Tree Edge)
+edgeTreeM :: Vertex -> State Stringnet (Tree Edge)
 edgeTreeM v = state $ \tc -> (edgeTree tc v, tc)
 
 
-endpointsM :: Edge -> State TwoComplex [Vertex]
+endpointsM :: Edge -> State Stringnet [Vertex]
 endpointsM e = state $ \tc -> (endpoints e tc, tc)
 
-perimeterM :: Disk -> State TwoComplex [Edge]
+perimeterM :: Disk -> State Stringnet [Edge]
 perimeterM d = state $ \tc -> (perimeter tc d, tc)
 
-start :: Edge -> TwoComplex -> Vertex
+start :: Edge -> Stringnet -> Vertex
 start e tc = (endpoints e tc) !! 0
 
-end :: Edge -> TwoComplex -> Vertex
+end :: Edge -> Stringnet -> Vertex
 end e tc = (endpoints e tc) !! 1
 
 
@@ -207,7 +205,7 @@ treeLabel (Leaf e) = objectLabel e
 treeLabel (Node x y) = TensorO (treeLabel x) (treeLabel y)
 
 
--- reverseEdge :: Edge -> State TwoComplex Edge
+-- reverseEdge :: Edge -> State Stringnet Edge
 -- reverseEdge e0 = state $ \tc ->
 --   (rev e0
 --   , tc
@@ -227,7 +225,7 @@ replace subTree1 subTree2 bigTree =
     Node x y -> Node (replace subTree1 subTree2 x)
                 (replace subTree1 subTree2 y)
 
-associateL :: IVertex -> Tree Edge -> State TwoComplex (Tree Edge)
+associateL :: IVertex -> Tree Edge -> State Stringnet (Tree Edge)
 associateL v0 subTree@(Node x yz) =
   case yz of
     Node y z ->
@@ -248,7 +246,7 @@ associateL v0 subTree@(Node x yz) =
          }
         )
 
-associateR :: IVertex -> Tree Edge -> State TwoComplex (Tree Edge)
+associateR :: IVertex -> Tree Edge -> State Stringnet (Tree Edge)
 associateR v0 subTree@(Node xy z) =
   case xy of
     Node x y ->
@@ -271,14 +269,14 @@ associateR v0 subTree@(Node xy z) =
 
 
 
-isolateHelperR :: IVertex ->  TwoComplex -> TwoComplex
+isolateHelperR :: IVertex ->  Stringnet -> Stringnet
 isolateHelperR v tc =
   let t = edgeTree tc (IV v) in
     case t of
       Node _ (Leaf x) -> tc
       Node _ (Node x y) -> isolateHelperR v $ execState (associateL v t) tc
   
-isolateHelperL :: IVertex ->  TwoComplex -> TwoComplex
+isolateHelperL :: IVertex ->  Stringnet -> Stringnet
 isolateHelperL v tc =
   let t = edgeTree tc (IV v) in
     case t of
@@ -287,18 +285,18 @@ isolateHelperL v tc =
   
      
 -- Turns the far right leaf into a depth one leaf  
-isolateR :: IVertex -> State TwoComplex ()
+isolateR :: IVertex -> State Stringnet ()
 isolateR v0 = state $ \tc ->
   ((), isolateHelperR v0 tc)
 
-isolateL :: IVertex -> State TwoComplex ()
+isolateL :: IVertex -> State Stringnet ()
 isolateL v0 = state $ \tc ->
   ((), isolateHelperL v0 tc)
 
 swap :: Tree a -> Tree a
 swap (Node x y) = Node y x
 
-zRotate :: IVertex -> State TwoComplex ()
+zRotate :: IVertex -> State Stringnet ()
 zRotate v0 =
   isolateR v0 
   >> ( state $ \tc ->
@@ -331,7 +329,7 @@ zRotate v0 =
   )
 
 
-rotateToEndHelper :: Edge -> IVertex -> TwoComplex -> TwoComplex
+rotateToEndHelper :: Edge -> IVertex -> Stringnet -> Stringnet
 rotateToEndHelper e0 v0 tc = 
   let
     es = flatten $ edgeTree tc (IV v0)
@@ -340,7 +338,7 @@ rotateToEndHelper e0 v0 tc =
     then tc
     else rotateToEndHelper e0 v0 $ execState (zRotate v0) tc
 
-rotateToEnd :: Edge -> IVertex -> State TwoComplex ()
+rotateToEnd :: Edge -> IVertex -> State Stringnet ()
 rotateToEnd e0 v0 = (state $ \tc ->
   ((), rotateToEndHelper e0 v0 tc))  >> isolateR v0
 
@@ -354,7 +352,7 @@ minimalSuperTree a1 a2 t@(Node x y)
 
 
 -- Easy optimization: calculate t from previous t
-isolate2Helper ::  Edge -> Edge -> IVertex -> TwoComplex -> TwoComplex
+isolate2Helper ::  Edge -> Edge -> IVertex -> Stringnet -> Stringnet
 isolate2Helper e1 e2 v0 tc0 =
   let
     t = minimalSuperTree e1 e2 (edgeTree tc0 $ IV v0)
@@ -369,7 +367,7 @@ isolate2Helper e1 e2 v0 tc0 =
 
 -- Put (rev) e1 and e2 on same node
 -- TODO: infer Edge Tree argument
-isolate2 :: Edge -> Edge -> IVertex  -> State TwoComplex ()
+isolate2 :: Edge -> Edge -> IVertex  -> State Stringnet ()
 isolate2 e1 e2 v0 = state $ \tc0 ->
   let
     firstEdge = (flatten $ edgeTree tc0 $ IV v0) !! 0
@@ -383,7 +381,7 @@ isolate2 e1 e2 v0 = state $ \tc0 ->
 -- The disk's perimeter should only have two edges
 -- FIXME: Main node is not getting edgeTree updated after tensor
 
-tensorHelper :: Disk -> State TwoComplex Edge
+tensorHelper :: Disk -> State Stringnet Edge
 tensorHelper d0 =
   state $ \tc0 ->
   let
@@ -413,7 +411,7 @@ tensorHelper d0 =
       }
     )
 
-tensorN :: Disk -> TwoComplex -> TwoComplex 
+tensorN :: Disk -> Stringnet -> Stringnet 
 tensorN d0 tc0 =
   let
     e1 = (perimeter tc0 d0) !! 0
@@ -427,7 +425,7 @@ tensorN d0 tc0 =
               ) tc0
 
 
-tensor :: Disk -> State TwoComplex ()
+tensor :: Disk -> State Stringnet ()
 tensor d = state $ \tc -> ((), tensorN d tc)
 
 -- do
@@ -440,7 +438,7 @@ tensor d = state $ \tc -> ((), tensorN d tc)
 --  tensorHelper d0 
 
 
-contract :: Edge -> State TwoComplex ()
+contract :: Edge -> State Stringnet ()
 contract e = do
   v0 <- fmap (toIV . (!! 0)) $ endpointsM e 
   v1 <- fmap (toIV . (!! 1)) $ endpointsM e 
@@ -457,7 +455,7 @@ leftSubTree (Node x y) = x
 rightSubTree :: Tree a -> Tree a
 rightSubTree (Node x y) = y
 
-contractHelper :: Edge -> State TwoComplex ()
+contractHelper :: Edge -> State Stringnet ()
 contractHelper contractedEdge  = state $ \tc ->
   let
     v0 = toIV $ (endpoints contractedEdge tc) !! 0
@@ -502,7 +500,7 @@ contractHelper contractedEdge  = state $ \tc ->
 -- Connect the starting point of the first edge to that of the second
 -- through the disk
 -- The edges e1 and e2 should be distinct elements of perimeter d.
-connect :: Edge -> Edge -> Disk -> State TwoComplex Edge
+connect :: Edge -> Edge -> Disk -> State Stringnet Edge
 connect e1 e2 d = state $ \tc -> 
   let connection = Connector e1 e2 d in
   ( connection
@@ -537,7 +535,7 @@ connect e1 e2 d = state $ \tc ->
       }
   )
         
-addCoev :: Edge -> State TwoComplex (IVertex, Edge, Edge)
+addCoev :: Edge -> State Stringnet (IVertex, Edge, Edge)
 addCoev e = state $ \tc ->
   let mp  = Midpoint e
       fh = FirstHalf e
@@ -575,6 +573,7 @@ addCoev e = state $ \tc ->
 
   )
 
+
 -- perimeter before contractions
 initialPerimeter :: Disk -> [Edge]
 initialPerimeter Outside    = [LeftLoop, RightLoop]
@@ -582,8 +581,8 @@ initialPerimeter LeftDisk   = [Reverse LeftLoop, LeftLeg, Reverse LeftLeg]
 initialPerimeter RightDisk  = [Reverse RightLoop, RightLeg, Reverse RightLeg]
 
 
--- tcX corresponds to figure number X from the paper
-initialTC = TwoComplex { vertices = [Main]
+-- tcX corresponds to figure number X from the braid figure in the paper
+initialTC = Stringnet { vertices = [Main]
                        , edges    = [LeftLoop, RightLoop, LeftLeg, RightLeg]
                        , disks    = [Outside, LeftDisk, RightDisk]
                        , imageVertex    = id
@@ -631,6 +630,7 @@ slide = do
 
 finalTC = execState slide initialTC
 
+finalMorphism = morphismLabel finalTC (vertices finalTC !! 0) 
 
 
 -- testDisk = evalState slide initialTC

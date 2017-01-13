@@ -1,6 +1,7 @@
--- This program calculates the TVBW representation of the braid generator
--- in terms of the structural morphisms of a spherical category.
--- To do this, it uses the follows Table 3 of the Finiteness for DW MCG reps paper.
+-- This program calculates the TVBW representation of the braid
+-- generator in terms of the structural morphisms of a spherical
+-- category.  To do this, it uses the follows Table 3 of the
+-- Finiteness for DW MCG reps paper.
 --
 -- We encode a stringnet as a marked CW-complex.
 -- For now, all duals are right duals.
@@ -9,8 +10,8 @@
 -- TODO: Calculate an actual R-matrix of a simple TY category.
 --
 -- TODO: Style refactoring
---     - consistent parameter naming, e.g. v0, d0
 --     - consistent use of State TwoComplex
+--     - consistent parameter naming, e.g. v0, d0
 --
 -- TODO: unit tests
 --
@@ -39,7 +40,8 @@ data Vertex = Punc Puncture | IV IVertex
   deriving (Show, Eq)
 
 
--- Orientations of initial edges are given by arrows in the figures in the paper
+-- Orientations of initial edges are given by arrows in the figures in
+-- the paper
 data Edge =
   -- initial edges
   LeftLoop | RightLoop | LeftLeg | RightLeg
@@ -53,7 +55,8 @@ data Edge =
    -- stick together parallel edges
   | TensorE Edge Edge
 
-  -- don't use this constructor except to pattern match, use "rev" instead
+  -- don't use this constructor except to pattern match, use "rev"
+  -- instead
   | Reverse Edge  
           deriving (Show, Eq)
 
@@ -76,12 +79,12 @@ data Stringnet = Stringnet
                   , edges         :: ![Edge]
                   , disks         :: ![Disk]
 
-                  -- The edges returned by perimeter should
-                  -- form a cycle (the end point of an edge should be the
-                  -- the starting point of the next edges).  Additionally,
+                  -- The edges returned by perimeter should form a
+                  -- cycle (the end point of an edge should be the the
+                  -- starting point of the next edges).  Additionally,
                   -- the edges should either lie in the edges of the
-                  -- Stringnet or be the reverse of such an edge.
-                  -- CCW ordering.
+                  -- Stringnet or be the reverse of such an edge.  CCW
+                  -- ordering.
                   , perimeter     :: !(Disk -> [Edge])
 
                   -- image under contractions
@@ -145,7 +148,8 @@ star :: Object -> Object
 star (Star o) = o
 star o = Star o
 
--- endpoints before finding the images of the vertices under contractions
+-- endpoints before finding the images of the vertices under
+-- contractions
 initialEndpoints :: Edge -> [Vertex]
 initialEndpoints edge  = case edge of
   LeftLoop  -> [IV Main, IV Main]
@@ -164,8 +168,8 @@ initialStart e = (initialEndpoints e) !! 0
 initialEnd :: Edge -> Vertex
 initialEnd e = (initialEndpoints e) !! 1
 
--- TODO: maybe put this into Stringnet, to make parallel with perimeter
---       also, eliminate "image"
+-- TODO: maybe put this into Stringnet, to make parallel with
+--       perimeter also, eliminate "image"
 endpoints :: Edge -> Stringnet -> [Vertex]
 endpoints e tc = map (imageVertex tc) (initialEndpoints e)
 
@@ -239,7 +243,8 @@ associateL v0 subTree@(Node x yz) =
                   
          , morphismLabel = \v ->
              if v == v0
-             then Compose (AlphaI (treeLabel x) (treeLabel y) (treeLabel z))
+             then Compose (AlphaI (treeLabel x) (treeLabel y)
+                           (treeLabel z))
                   (morphismLabel tc v)
              else morphismLabel tc v
          }
@@ -260,7 +265,8 @@ associateR v0 subTree@(Node xy z) =
                          
                     , morphismLabel = \v ->
                         if v == v0
-                        then Compose (Alpha (treeLabel x) (treeLabel y) (treeLabel z))
+                        then Compose (Alpha (treeLabel x)
+                                      (treeLabel y) (treeLabel z))
                              (morphismLabel tc v)
                         else morphismLabel tc v
                     }
@@ -273,14 +279,16 @@ isolateHelperR v tc =
   let t = edgeTree tc (IV v) in
     case t of
       Node _ (Leaf x) -> tc
-      Node _ (Node x y) -> isolateHelperR v $ execState (associateL v t) tc
+      Node _ (Node x y) -> isolateHelperR v
+        $ execState (associateL v t) tc
   
 isolateHelperL :: IVertex ->  Stringnet -> Stringnet
 isolateHelperL v tc =
   let t = edgeTree tc (IV v) in
     case t of
       Node (Leaf x) _ -> tc
-      Node (Node x y) _ -> isolateHelperL v $ execState (associateR v t) tc
+      Node (Node x y) _ -> isolateHelperL v
+        $ execState (associateR v t) tc
   
      
 -- Turns the far right leaf into a depth one leaf  
@@ -295,36 +303,38 @@ isolateL v0 = state $ \tc ->
 swap :: Tree a -> Tree a
 swap (Node x y) = Node y x
 
+-- 
+zMorphism :: Object -> Object -> Morphism -> Morphism
+zMorphism xl yl m =
+  ((Id xl) `TensorM`  (Rho yl))
+  <> ((Id xl) `TensorM` ((Id yl) `TensorM` (Ev $ star xl))) -- X (Y 1)
+  <> ((Id xl) `TensorM` (Alpha yl xl (star xl))) -- X (Y (X *X))
+  <> ((Id xl) `TensorM` (m `TensorM` (Id $ star xl))) -- X 1 *X -> X ((Y X) *X)
+  <> ((PivotalJI xl) `TensorM` (LambdaI $ star xl))       -- **X *X -> X (1 *X)
+  <> (Coev $ star xl)  -- 1 -> **X *X
+
+-- rotation of the rightmost edge in v0's to the leftside
 zRotate :: IVertex -> State Stringnet ()
 zRotate v0 =
-  isolateR v0 
-  >> ( state $ \tc ->
-  ((), tc
-       { edgeTree = \v ->
-           (
-             if v == IV v0
-             then swap 
-             else id
-           )
-           $ edgeTree tc v
-        
-       ,  morphismLabel = \v ->
-           if v == v0 
-           then case (edgeTree tc (IV v0)) of
-             Node y (Leaf x) ->
-               let
-                 xl = objectLabel x
-                 yl = treeLabel y
-               in
-                 ((Id xl) `TensorM`  (Rho yl))
-                 <> ((Id xl) `TensorM` ((Id yl) `TensorM` (Ev $ star xl))) -- X (Y 1)
-                 <> ((Id xl) `TensorM` (Alpha yl xl (star xl))) -- X (Y (X *X))
-                 <> ((Id xl) `TensorM` ((morphismLabel tc v) `TensorM` (Id $ star xl))) -- X 1 *X -> X ((Y X) *X)
-                 <> ((PivotalJI xl) `TensorM` (LambdaI $ star xl))       -- **X *X -> X (1 *X)
-                 <> (Coev $ star xl)  -- 1 -> **X *X
+  isolateR v0 >> 
+  ( state $ \tc ->
+      ((), tc
+        { edgeTree = \v ->
+            (
+              if v == IV v0
+              then swap 
+              else id
+            )
+            $ edgeTree tc v
+          
+        ,  morphismLabel = \v ->
+            if v == v0 
+            then case (edgeTree tc (IV v0)) of
+              Node y (Leaf x) ->
+                zMorphism (objectLabel x) (treeLabel y) (morphismLabel tc v)
            else morphismLabel tc v
-     }
-  )
+        }
+      )
   )
 
 
@@ -365,7 +375,6 @@ isolate2Helper e1 e2 v0 tc0 =
               Leaf y0 -> tc0
 
 -- Put (rev) e1 and e2 on same node
--- TODO: infer Edge Tree argument
 isolate2 :: Edge -> Edge -> IVertex  -> State Stringnet ()
 isolate2 e1 e2 v0 = state $ \tc0 ->
   let
@@ -378,8 +387,6 @@ isolate2 e1 e2 v0 = state $ \tc0 ->
 
 
 -- The disk's perimeter should only have two edges
--- FIXME: Main node is not getting edgeTree updated after tensor
-
 tensorHelper :: Disk -> State Stringnet Edge
 tensorHelper d0 =
   state $ \tc0 ->
@@ -497,8 +504,8 @@ contractHelper contractedEdge  = state $ \tc ->
 
 
 -- Connect the starting point of the first edge to that of the second
--- through the disk
--- The edges e1 and e2 should be distinct elements of perimeter d.
+-- through the disk The edges e1 and e2 should be distinct elements of
+-- perimeter d.
 connect :: Edge -> Edge -> Disk -> State Stringnet Edge
 connect e1 e2 d = state $ \tc -> 
   let connection = Connector e1 e2 d in
@@ -580,6 +587,27 @@ initialPerimeter LeftDisk   = [Reverse LeftLoop, LeftLeg, Reverse LeftLeg]
 initialPerimeter RightDisk  = [Reverse RightLoop, RightLeg, Reverse RightLeg]
 
 
+initialEdgeTree v = case v of
+                      Punc LeftPuncture -> Leaf $ Reverse LeftLeg
+                      Punc RightPuncture -> Leaf $ Reverse RightLeg
+                      IV Main ->
+                        Node
+                        (Node
+                         (Leaf $ Reverse RightLoop)
+                         (Node
+                          (Leaf RightLeg)
+                           (Leaf RightLoop)
+                         )
+                        )
+                        (Node
+                          (Leaf $ Reverse LeftLoop)
+                          (Node
+                            (Leaf LeftLeg)
+                            (Leaf LeftLoop)
+                          )                                                          
+                        )
+
+
 -- tcX corresponds to figure number X from the braid figure in the paper
 initialTC = Stringnet { vertices = [Main]
                        , edges    = [LeftLoop, RightLoop, LeftLeg, RightLeg]
@@ -587,26 +615,7 @@ initialTC = Stringnet { vertices = [Main]
                        , imageVertex    = id
                        , perimeter = initialPerimeter
                        , morphismLabel  =  (\m -> case m of Main -> Phi)
-                       , edgeTree = \v -> case v of
-                                            Punc LeftPuncture -> Leaf $ Reverse LeftLeg
-                                            Punc RightPuncture -> Leaf $ Reverse RightLeg
-                                            IV Main ->
-                                                       Node
-                                                         (Node
-                                                          (Leaf $ Reverse RightLoop)
-                                                          (Node
-                                                           (Leaf RightLeg)
-                                                           (Leaf RightLoop)
-                                                          )
-                                                         )
-                                                         (Node
-                                                          (Leaf $ Reverse LeftLoop)
-                                                          (Node
-                                                           (Leaf LeftLeg)
-                                                           (Leaf LeftLoop)
-                                                          )                                                          
-                                                         )
-                                                         
+                       , edgeTree = initialEdgeTree
                        }
 
             

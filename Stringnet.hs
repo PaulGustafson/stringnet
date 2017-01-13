@@ -10,8 +10,9 @@
 -- TODO: Calculate an actual R-matrix of a simple TY category.
 --
 -- TODO: Style refactoring
+--     - comment top-level (exported) functions
 --     - consistent use of State TwoComplex
---     - consistent parameter naming, e.g. v0, d0
+--     
 --
 -- TODO: unit tests
 --
@@ -100,7 +101,8 @@ data Stringnet = Stringnet
 
 data Object = G | H | K | L
             | One
-            | Star Object  -- Don't use this constructor except to pattern match, use "star" instead
+            | Star Object  -- Don't use this constructor except to
+                           -- pattern match, use "star" instead
             | TensorO Object Object
             deriving (Show)
                                                            

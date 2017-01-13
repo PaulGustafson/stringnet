@@ -6,6 +6,8 @@
 -- We encode a stringnet as a marked CW-complex.
 -- For now, all duals are right duals.
 --
+-- TODO: Reassociate final vertex to the same edgeTree as inital
+-- vertex.
 --
 -- TODO: Calculate an actual R-matrix of a simple TY category.
 --
@@ -13,6 +15,8 @@
 --     - comment top-level (exported) functions
 --     - consistent use of State TwoComplex
 --     
+-- TODO: Make all functions total
+--       - Get rid of toIV type casts
 --
 -- TODO: unit tests
 --
@@ -39,7 +43,6 @@ data IVertex = Main | Midpoint Edge | Contraction Edge
 
 data Vertex = Punc Puncture | IV IVertex
   deriving (Show, Eq)
-
 
 -- Orientations of initial edges are given by arrows in the figures in
 -- the paper
@@ -133,8 +136,12 @@ toDataTree (Leaf x) = T.Node (Just x) []
 toDataTree (Node x y) = T.Node Nothing [toDataTree x, toDataTree y]
 
 -- Pretty print
-pprint :: (Show a) => Tree a -> IO ()
-pprint = putStr . T.drawTree . fmap show . toDataTree
+pprint :: (Show a) => Tree a-> IO ()
+pprint = putStr. T.drawTree . fmap (\x -> case x of
+                                       Nothing -> "+"
+                                       Just e -> show e
+                                   )
+                                   . toDataTree
 
 -- type cast 
 toIV :: Vertex -> IVertex
@@ -446,7 +453,7 @@ tensor d = state $ \tc -> ((), tensorN d tc)
 --  tensorHelper d0 
 
 
-contract :: Edge -> State Stringnet ()
+contract :: Edge -> State Stringnet IVertex
 contract e = do
   v0 <- fmap (toIV . (!! 0)) $ endpointsM e 
   v1 <- fmap (toIV . (!! 1)) $ endpointsM e 
@@ -455,7 +462,6 @@ contract e = do
   zRotate v1  
   isolateL v1
   contractHelper e
-  return () 
 
 leftSubTree :: Tree a -> Tree a
 leftSubTree (Node x y) = x
@@ -463,14 +469,14 @@ leftSubTree (Node x y) = x
 rightSubTree :: Tree a -> Tree a
 rightSubTree (Node x y) = y
 
-contractHelper :: Edge -> State Stringnet ()
+contractHelper :: Edge -> State Stringnet IVertex
 contractHelper contractedEdge  = state $ \tc ->
   let
     v0 = toIV $ (endpoints contractedEdge tc) !! 0
     v1 = toIV $ (endpoints contractedEdge tc) !! 1
     composition =  Contraction contractedEdge
   in
-  ((), tc
+  (composition, tc
                 { vertices = [composition] ++
                              [v | v <- vertices tc
                                 , not $ v `elem` [v0, v1]]
@@ -593,13 +599,13 @@ initialEdgeTree v = case v of
                       Punc LeftPuncture -> Leaf $ Reverse LeftLeg
                       Punc RightPuncture -> Leaf $ Reverse RightLeg
                       IV Main ->
-                        Node
+                       Node
                         (Node
-                         (Leaf $ Reverse RightLoop)
-                         (Node
-                          (Leaf RightLeg)
-                           (Leaf RightLoop)
-                         )
+                          (Leaf $ Reverse RightLoop)
+                          (Node
+                            (Leaf RightLeg)
+                            (Leaf RightLoop)
+                          )
                         )
                         (Node
                           (Leaf $ Reverse LeftLoop)
@@ -621,7 +627,7 @@ initialTC = Stringnet { vertices = [Main]
                        }
 
             
-slide = do
+braid = do
   (top1,l1,r1) <- addCoev LeftLoop
   (top2,l2,r2) <- addCoev LeftLeg
   (top3,r13,l3) <- addCoev r1
@@ -635,15 +641,61 @@ slide = do
   tensor (Cut $ rev e1)
   tensor (Cut $ rev e2)
   tensor (Cut $ rev e3)
-  contract r4
+  v <- contract r4
+  
+  -- At this point we're done with local moves, but we still need to
+  -- modify the final vertex's edge tree. It should look the same as
+  -- the initial edge tree, except left and right are swapped. This is
+  -- somewhat implementation-dependent since I haven't specified
+  -- complete edgeTree behavior for most of the local moves.
+  --
+  -- TODO: make a method to turn a tree into a specified shape
+  --
+  -- Current Edgetree:
+  
+  -- +
+  -- |
+  -- +- +
+  -- |  |
+  -- |  +- +
+  -- |  |  |
+  -- |  |  +- +
+  -- |  |  |  |
+  -- |  |  |  +- Reverse (FirstHalf (SecondHalf LeftLoop))
+  -- |  |  |  |
+  -- |  |  |  `- SecondHalf LeftLeg
+  -- |  |  |
+  -- |  |  `- FirstHalf (SecondHalf LeftLoop)
+  -- |  |
+  -- |  `- TensorE (TensorE (TensorE (Reverse (FirstHalf LeftLoop)) (Reverse (FirstHalf LeftLeg))) (SecondHalf (SecondHalf LeftLoop))) (Reverse (FirstHalf RightLoop))
+  -- |
+  -- `- +
+  --    |
+  --    +- RightLeg
+  --    |
+  --    `- Reverse (TensorE (TensorE (TensorE (Reverse (FirstHalf LeftLoop)) (Reverse (FirstHalf LeftLeg))) (SecondHalf (SecondHalf LeftLoop))) (Reverse (FirstHalf RightLoop)))
+
+  associateR v
+    (Node
+      (Node
+        (Leaf (Reverse (FirstHalf (SecondHalf LeftLoop))))
+        (Leaf (SecondHalf LeftLeg))
+      )
+      (Leaf (FirstHalf (SecondHalf LeftLoop)))
+    )
+
+  et <- edgeTreeM (IV v)
+  associateR v et
+  
+  return ()
 
 
-finalTC = execState slide initialTC
+finalTC = execState braid initialTC
+finalVertex = vertices finalTC !! 0
+finalMorphism = morphismLabel finalTC finalVertex
 
-finalMorphism = morphismLabel finalTC (vertices finalTC !! 0) 
 
-
--- testDisk = evalState slide initialTC
+-- testDisk = evalState braid initialTC
 -- testPerim = perimeter finalTC testDisk
 -- testE1 = testPerim !! 0
 -- testE2 = rev (testPerim !! 1)

@@ -1,8 +1,9 @@
 # stringnet
-Haskell library for stringnet calculations 
+A Haskell library for stringnet calculations 
+--------------------
 
-Currently, it computes the representation of a braid generator in the Turaev-Viro-Barrett-Westbury 
-TQFT representation of the braid group associated to an arbitrary spherical category.  
+Currently, the executable computes the representation of a braid generator in the Turaev-Viro-Barrett-Westbury 
+TQFT representation in terms of the structural morphisms of an arbitrary spherical category.
 
 
 References and notes

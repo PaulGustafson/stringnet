@@ -1,4 +1,4 @@
--- Definition of a Tambara-Yamagami category
+-- Calculate R-matrix for TY(\ZZ_7, \zeta_7^{ab}, \sqrt{7})
 -- References:
 --
 -- Daisuke Tambara, Shigeru Yamagami, Tensor Categories with Fusion
@@ -10,19 +10,52 @@
 module TambaraYamagami where
 
 import qualified Stringnet as S
-import           Data.Semigroup 
+import           Data.Semigroup
+import qualified Data.List.NonEmpty as N
+import Data.Matrix
+import qualified Data.Vector as V
 
+order = 7
 
-data GroupElement = GEVar S.InitialEdge
-  | One
-  | Inverse GroupElement -- use "inv" constructor
-  | Prod GroupElement GroupElement
+-- group element, assuming cyclicity
+-- dependent types would be nice here
+data GroupElement = GroupElement Int deriving (Show, Eq)
 
--- TODO: Is there a Group typeclass?
--- Also, a Ring typeclass would be nice too.
 inv :: GroupElement -> GroupElement
-inv (Inverse g) = g
-inv g = Inverse g
+inv (GroupElement e) = GroupElement  $ (-e) `mod` order
+
+plus :: GroupElement -> GroupElement -> GroupElement
+(GroupElement e1) `plus` (GroupElement e2) = GroupElement $ (e1 + e2) `mod` order
+
+-- \pm (order)^{-1/2}
+data Tau = Plus | Minus
+
+
+data Scalar =
+  Zero
+  | Tau
+  -- use a group element to represent the root of unity
+  | RootOfUnity GroupElement 
+  | MultS_ Scalar Scalar 
+
+
+oneScalar :: Scalar
+oneScalar = RootOfUnity $ GroupElement 0
+
+-- TODO: Some more cancellation should  show up here
+multS :: Scalar -> Scalar -> Scalar
+multS Zero _ = Zero
+multS _ Zero = Zero
+multS (RootOfUnity a) (RootOfUnity b) = RootOfUnity (a `plus` b)
+multS a b = MultS_ a b
+
+
+chi :: GroupElement -> GroupElement -> Scalar
+chi (GroupElement e1) (GroupElement e2) = RootOfUnity $ GroupElement $ (e1*e2) `mod` order
+
+chiI :: GroupElement -> GroupElement -> Scalar
+chiI (GroupElement e1) (GroupElement e2) = RootOfUnity $ GroupElement $ (-e1*e2) `mod` order
+
 
 data SimpleObject =
   -- non-group simple object
@@ -30,110 +63,110 @@ data SimpleObject =
 
   -- Group-element-indexed simple objects
   | GE GroupElement
+                  deriving (Show,Eq)
 
-  | SOVar S.InitialEdge
 
+data Object = SumO {
+  summands :: [SimpleObject]
+  }
 
-data Object =
-  SO SimpleObject
-
-  -- $n \bigoplus_{a \in A} a$
-  | GroupSum Int
-
-  -- $n \bigoplus_{a \in A} m$
-  | MSum Int
-
+so :: SimpleObject -> Object
+so x = SumO [x]
   
+-- Matrices of scalars times identity maps
+data Morphism =  Morphism (Matrix Scalar)
+
+scalarMorphism s = Morphism $ fromLists [[s]]
+
+idMorphism = scalarMorphism $ RootOfUnity $ GroupElement 0
+
+groupSum :: (GroupElement -> Scalar) -> Morphism
+groupSum f = Morphism $ diagonal Zero $ V.generate order (f . GroupElement)
+
+fromFunction :: (GroupElement -> GroupElement -> Scalar) -> Morphism
+fromFunction f = let
+  f2 (x,y) =  f (GroupElement $ x + 1) (GroupElement $ y + 1)
+  in
+    Morphism $ matrix order order f2
+
+
+-- carrier set for the group
+group :: [GroupElement]
+group = Prelude.map GroupElement [0..(order - 1)]
+
+starSO :: SimpleObject -> SimpleObject
+starSO M =  M
+starSO (GE g) = GE (inv g)
+
 star :: Object -> Object
-star (SO M) = SO M
-star (SO (GE g)) = SO $ GE (inv g)
-star (GroupSum n) = GroupSum n
-star (MSum n) = MSum n
+star (SumO sos) = SumO $ map starSO sos
 
-data Scalar =
-  Chi GroupElement GroupElement
-  | Tau
-  | ChiI GroupElement GroupElement
-  | MultS Scalar Scalar
-
-data Morphism =
-
-  -- arbitary initial morphism
-  Id Object
-
-  -- \bigoplus_b \chi(a,b) 1_b
-  | CharacterSum GroupElement
-
-  | MultM Scalar Morphism
-  
-  -- Dependent types could make this a lot cleaner
-  -- number of copies of the group in the direct sum
-  | Matrix Int [[Scalar]]
-
-
+-- Assume all matrices are square.
+-- https://en.wikipedia.org/wiki/Kronecker_product
 tensorM :: Morphism -> Morphism -> Morphism
-tensorM (MultM s1 m1) (MultM s2 m2) = (s1 `MultS` s2) `MultM` (m1 `tensorM` m2)
-tensorM (Id _ ) x = x --   
+tensorM (Morphism f) (Morphism g) =
+  let size = (nrows f) * (nrows g) in
+    Morphism $ matrix size size $ \ij ->
+    let
+      i = fst ij
+      j = snd ij
+      p = nrows g
+      v = i `mod` p
+      w = j `mod` p
+      r = 1 + (i - v) `div` p
+      s = 1 + (j - v) `div` p
+    in                       
+      (f ! (r,s)) `multS` (g ! (v,w))
+      
+                   
+-- validInitialLabels :: S.InitialEdge -> [SimpleObject]
+-- validInitialLabels ie = [M, GE $ GEVar ie]
 
+tensorSO :: SimpleObject -> SimpleObject -> Object
+tensorSO M M = SumO $ map GE group
+tensorSO M (GE _) = so M
+tensorSO (GE _) M = so M
+tensorSO (GE g1) (GE g2) = so $ GE $ g1 `plus` g2
 
-validInitialLabels :: S.InitialEdge -> [SimpleObject]
-validInitialLabels ie = [M, GE $ GEVar ie]
-
--- instance Semigroup Object where
---   x <> y = x `SumO` y
-
--- instance Semigroup Morphism where
---   x <> y = x `SumM` y
-
--- --TODO: change types and export this method
--- --      typeclasses: AdditivelyGenerated and Summable
--- linearize :: Semigroup b => (SimpleObject -> b)
---                          -> (Object -> b)
--- linearize f (SumO o1 o2) = (linearize f o1) <> (linearize f o2)
--- linearize f (SO so) = f so
-
--- linearize2 :: Semigroup b => (a -> SimpleObject -> b)
---                          -> (a -> Object -> b)
--- linearize2 f x (SumO o1 o2) = (linearize2 f x o1) <> (linearize2 f x o2)
--- linearize2 f x (SO so) = f x so
-
-tensorOH :: SimpleObject -> SimpleObject -> Object
-tensorOH M _ = SO M
-tensorOH _ M = SO M
-tensorOH (GE g1) (GE g2) = SO $ GE $ Product g1 g2
-
--- computes the tensor of two objects
+--TODO: figure out how to flatten nested direct sums
+-- Should be able to use the fact that they are independent sums
 tensorO :: Object -> Object -> Object
-tensorO  =  linearize $ linearize2 tensorOH 
+tensorO (SumO sos1) (SumO sos2) = SumO $
+  concat $ map summands
+  [ so1 `tensorSO` so2 | so1 <- sos1
+                       , so2 <- sos2
+  ]
 
 
-
--- Substitute in the TY-specific morphisms
+-- Substitute in the TY-specific objects. 
 substO :: S.Object -> Object
 substO o0 =  case o0 of
-  S.OVar ie -> SO $ SOVar ie
-  S.One -> SO $ GE One
+  S.One -> so $ GE (GroupElement 0)
   S.Star o -> star $ substO o
   S.TensorO o1 o2 -> (substO o1) `tensorO` (substO o2)
 
-                         
+
+alpha :: SimpleObject -> SimpleObject -> SimpleObject -> Morphism
+alpha (GE g1) (GE g2) (GE g3) = idMorphism
+alpha (GE _) (GE _) M = idMorphism
+alpha M (GE _) (GE _) = idMorphism
+alpha (GE a) M (GE b) = scalarMorphism (chi a b) 
+alpha (GE _) M M = groupSum (\x -> oneScalar)
+alpha M M (GE _) = groupSum (\x -> oneScalar)
+alpha M (GE a) M = groupSum (\b -> chi a b) 
+alpha M M M = fromFunction chi
+             
+                     
 -- Substitute in the TY-specific morphisms 
 substM :: S.Morphism -> Morphism
 substM m = case m of
-  S.Phi -> Phi
-  S.Id o -> Id $ substO o
-  S.Lambda o -> Id $ substO o
-  S.LambdaI o -> Id $ substO o
-  S.Rho o -> Id $ substO o
-  S.RhoI o -> Id $ substO o
-  -- TODO: figure out how to automate linearity
-  let 
-    alpha (GE g1) (GE g2) (GE g3) = Id $ SO $ GE $ g1 `Prod` g2 `Prod` g3
-    alpha (GE _) (GE _) M = Id $ SO M
-    alpha M (GE _) (GE _) = Id $ SO M
-    alpha (GE a) M (GE b) = (Chi a b) `MultM` Id $ SO M
-    alpha (GE _) M M =  GroupSum $ 
-    
+  S.Phi -> idMorphism
+  S.Id o -> idMorphism
+  S.Lambda o -> idMorphism
+  S.LambdaI o -> idMorphism
+  S.Rho o -> idMorphism
+  S.RhoI o -> idMorphism
+  S.TensorM m1 m2 -> (substM m1) `tensorM` (substM m2)
 
   -- Alpha o1 o2 o3 -> case (substO o1) of
   --   SumO o11 o12
@@ -142,7 +175,7 @@ substM m = case m of
   -- Coev o ->
   -- Ev o ->
 
-  TensorM m1 m2 -> m1 `tensorM` m2
+  
   
               -- | Coev Object   --  right coev
               -- | Ev Object     -- right ev

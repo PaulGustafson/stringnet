@@ -22,6 +22,7 @@ executable stringnet
   -- other-extensions:    
   build-depends:       base >=4.8 && <4.9,
                        containers >= 0.5.6.2,
+                       groups >= 0.4.0.0,
                        matrix >= 0.3.5.0,
                        mtl >= 2.2.1,
                        semigroups >= 0.18.2,

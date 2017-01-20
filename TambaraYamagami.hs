@@ -21,7 +21,7 @@
 module TambaraYamagami where
 
 import qualified Data.List.NonEmpty as N
-import qualified Data.Matrix        as M
+import qualified Data.Matrix as M
 import           Data.Semigroup
 import qualified Data.Vector        as V
 import qualified Data.List          as L
@@ -138,13 +138,13 @@ so x = SumO [x]
 data TauMatrix =  TauMatrix
   { matrix :: M.Matrix Scalar
   , tauExponent :: Sum Int
-  }
+  } deriving Show
 
 -- Matrices of scalars mappend identity maps
 -- TODO: convert this to a dependent type Domain -> Codomain -> Scalar
 data Morphism = Morphism {
   summandsM :: [(TauMatrix)]
-  }
+  } deriving Show
 
 instance Semigroup Morphism where
   m1 <>  m2 = Morphism $ (summandsM m1) ++ (summandsM m2)
@@ -190,6 +190,7 @@ starSO (GE g) = GE (invert g)
 star :: Object -> Object
 star (SumO sos) = SumO $ map starSO sos
 
+
 -- https://en.wikipedia.org/wiki/Kronecker_product
 kronecker :: (Num a) => M.Matrix a -> M.Matrix a -> M.Matrix a
 kronecker f g =
@@ -198,15 +199,20 @@ kronecker f g =
     n = M.ncols f
     p = M.nrows g
     q = M.ncols g
+    shiftedMod x y =
+      let z = x `mod` y in
+        if z == 0
+        then y
+        else z
   in
     M.matrix (m*p) (n*q) $ \ij ->
     let
       i = fst ij
       j = snd ij
-      v = i `mod` p
-      w = j `mod` q
+      v = i `shiftedMod` p 
+      w = j `shiftedMod` q
       r = 1 + (i - v) `div` p
-      s = 1 + (j - v) `div` q
+      s = 1 + (j - w) `div` q
     in
       (f M.! (r,s)) * (g M.! (v,w))
 
@@ -237,14 +243,17 @@ tensorO (SumO sos1) (SumO sos2) = SumO $
                        , so2 <- sos2
   ]
 
+-- FIXME
+initialLabel :: S.InitialEdge -> Object
+initialLabel ie = so $ GE (GroupElement 0)
 
 -- Substitute in the TY-specific objects.
 substO :: S.Object -> Object
 substO o0 =  case o0 of
+  S.OVar ie -> initialLabel ie
   S.One -> so $ GE (GroupElement 0)
   S.Star o -> star $ substO o
   S.TensorO o1 o2 -> (substO o1) `tensorO` (substO o2)
-
 
 alpha :: SimpleObject -> SimpleObject -> SimpleObject -> Morphism
 alpha (GE g1) (GE g2) (GE g3) = idMorphism $ so $ GE $ g1 `mappend` g2 `mappend` g3

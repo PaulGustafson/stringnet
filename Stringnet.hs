@@ -128,6 +128,26 @@ data Morphism = Phi
               deriving (Show)
 
 
+toCompositionTree :: Morphism -> Tree Morphism
+toCompositionTree (Compose x y) =
+  Node (toCompositionTree x) (toCompositionTree y)
+toCompositionTree x = Leaf x
+
+toCompositionList :: Morphism -> [Morphism]
+toCompositionList = flatten . toCompositionTree
+
+toTensorTree :: Morphism -> Tree Morphism
+toTensorTree (TensorM x y) =
+  Node (toTensorTree x) (toTensorTree y)
+toTensorTree x = Leaf x
+
+toTree :: Morphism -> T.Tree (Maybe Morphism)
+toTree m@(Compose x y) =
+  T.Node Nothing  (map toTree $ toCompositionList m)
+toTree t@(TensorM x y) =
+  T.Node Nothing [(toTree x), (toTree y)]
+toTree x = T.Node (Just x) []
+
 -- domain :: Morphism -> Object
 -- domain Phi = 
 
@@ -137,6 +157,8 @@ instance Semigroup Morphism where
 toDataTree :: Tree a -> T.Tree (Maybe a)
 toDataTree (Leaf x) = T.Node (Just x) []
 toDataTree (Node x y) = T.Node Nothing [toDataTree x, toDataTree y]
+
+
 
 -- Pretty print
 pprint :: (Show a) => Tree a-> IO ()

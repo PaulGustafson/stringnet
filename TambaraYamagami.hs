@@ -11,6 +11,8 @@
 -- Kenichi Shimizu. Frobenius-Schur indicators in Tambara-Yamagami
 -- categories.
 --
+-- TODO: write unit tests for important methods
+--
 --
 -- TODO: implement simple reductions for scalars,
 -- e.g. \sum_{i=0}^{p-1} \zeta^i = 0
@@ -106,8 +108,8 @@ fromRootOfUnity x = Scalar $ \y ->
 
 -- Quadratic gauss sum
 -- Currently only works if order = 1 (mod 4)
--- tau :: Scalar
--- tau =  nu * fromBag [RootOfUnity $ GroupElement (n^2) | n <- [0..(order - 1)]]
+-- tauI :: Scalar
+-- tauI =  nu * fromBag [RootOfUnity $ GroupElement (n^2) | n <- [0..(order - 1)]]
 
 
 
@@ -129,7 +131,7 @@ data SimpleObject =
 
 data Object = SumO {
   summandsO :: [SimpleObject]
-  }
+  } deriving (Show)
 
 so :: SimpleObject -> Object
 so x = SumO [x]
@@ -309,7 +311,7 @@ compose :: Morphism -> Morphism -> Morphism
 compose (Morphism tms1) (Morphism tms2) = Morphism $
   zipWith composeTM tms1 tms2
   
-
+-- TODO: Figure out where the program is hanging
 -- Substitute in the TY-specific morphisms
 substM :: S.Morphism -> Morphism
 substM m = case m of

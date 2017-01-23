@@ -25,8 +25,8 @@
 
 module Stringnet where
 
+import Prelude hiding (product)
 import           Control.Monad.State
-import           Data.List
 import           Data.Semigroup
 import qualified Data.Tree as T
   
@@ -142,9 +142,9 @@ toTensorTree (TensorM x y) =
 toTensorTree x = Leaf x
 
 toTree :: Morphism -> T.Tree (Maybe Morphism)
-toTree m@(Compose x y) =
+toTree m@(Compose _ _) =
   T.Node Nothing  (map toTree $ toCompositionList m)
-toTree t@(TensorM x y) =
+toTree (TensorM x y) =
   T.Node Nothing [(toTree x), (toTree y)]
 toTree x = T.Node (Just x) []
 
@@ -309,16 +309,16 @@ isolateHelperR :: InteriorVertex ->  Stringnet -> Stringnet
 isolateHelperR v tc =
   let t = edgeTree tc (IV v) in
     case t of
-      Node _ (Leaf x) -> tc
-      Node _ (Node x y) -> isolateHelperR v
+      Node _ (Leaf _) -> tc
+      Node _ (Node _ _) -> isolateHelperR v
         $ execState (associateL v t) tc
   
 isolateHelperL :: InteriorVertex ->  Stringnet -> Stringnet
 isolateHelperL v tc =
   let t = edgeTree tc (IV v) in
     case t of
-      Node (Leaf x) _ -> tc
-      Node (Node x y) _ -> isolateHelperL v
+      Node (Leaf _) _ -> tc
+      Node (Node _ _) _ -> isolateHelperL v
         $ execState (associateR v t) tc
   
      
@@ -382,6 +382,7 @@ rotateToEnd :: Edge -> InteriorVertex -> State Stringnet ()
 rotateToEnd e0 v0 = (state $ \tc ->
   ((), rotateToEndHelper e0 v0 tc))  >> isolateR v0
 
+elemT :: Eq a => a -> Tree a -> Bool
 elemT u = (elem u) . flatten 
 
 minimalSuperTree :: (Eq a) => a -> a -> Tree a -> Tree a
@@ -400,10 +401,10 @@ isolate2Helper e1 e2 v0 tc0 =
     case t of
       Node x y -> 
         case x of
-          Node x1 x2 -> isolate2Helper e1 e2 v0 $ execState (associateR v0 t) tc0
-          Leaf x0 -> case y of
-              Node y1 y2 -> isolate2Helper e1 e2 v0 $ execState (associateL v0 t) tc0
-              Leaf y0 -> tc0
+          Node _ _ -> isolate2Helper e1 e2 v0 $ execState (associateR v0 t) tc0
+          Leaf _ -> case y of
+              Node _ _ -> isolate2Helper e1 e2 v0 $ execState (associateL v0 t) tc0
+              Leaf _ -> tc0
 
 -- Put (rev) e1 and e2 on same node
 isolate2 :: Edge -> Edge -> InteriorVertex  -> State Stringnet ()
@@ -486,10 +487,10 @@ contract e = do
   contractHelper e
 
 leftSubTree :: Tree a -> Tree a
-leftSubTree (Node x y) = x
+leftSubTree (Node x _) = x
 
 rightSubTree :: Tree a -> Tree a
-rightSubTree (Node x y) = y
+rightSubTree (Node _ y) = y
 
 contractHelper :: Edge -> State Stringnet InteriorVertex
 contractHelper contractedEdge  = state $ \tc ->
@@ -576,8 +577,6 @@ addCoev e = state $ \tc ->
   let mp  = Midpoint e
       fh = FirstHalf e
       sh = SecondHalf e
-      v0 = (endpoints e tc) !! 0
-      v1 = (endpoints e tc) !! 1
   in
   ((mp, fh, sh), tc 
                 { vertices =  [mp] ++ vertices tc
@@ -618,7 +617,7 @@ initialPerimeter LeftDisk   =
 initialPerimeter RightDisk  =
   [Reverse $ IE RightLoop, IE RightLeg, Reverse $ IE RightLeg]
 
-
+initialEdgeTree :: Vertex -> Tree Edge
 initialEdgeTree v = case v of
   Punc LeftPuncture -> Leaf $ Reverse $ IE LeftLeg
   Punc RightPuncture -> Leaf $ Reverse $ IE RightLeg
@@ -640,7 +639,7 @@ initialEdgeTree v = case v of
      )
 
 
--- tcX corresponds to figure number X from the braid figure in the paper
+initialTC :: Stringnet
 initialTC = Stringnet { vertices = [Main]
                        , edges    = map IE [LeftLoop, RightLoop, LeftLeg, RightLeg]
                        , disks    = [Outside, LeftDisk, RightDisk]
@@ -650,12 +649,12 @@ initialTC = Stringnet { vertices = [Main]
                        , edgeTree = initialEdgeTree
                        }
 
-            
+braid :: State Stringnet ()            
 braid = do
-  (top1,l1,r1) <- addCoev $ IE LeftLoop
-  (top2,l2,r2) <- addCoev $ IE LeftLeg
-  (top3,r13,l3) <- addCoev r1
-  (top4,l4,r4) <- addCoev $ IE RightLoop
+  (_,l1,r1) <- addCoev $ IE LeftLoop
+  (_,l2,r2) <- addCoev $ IE LeftLeg
+  (_,r13,l3) <- addCoev r1
+  (_,_,r4) <- addCoev $ IE RightLoop
   e1 <- connect (rev l1) r2 LeftDisk
   e2 <- connect (rev l2) (rev r13) (Cut $ e1)
   e3 <- connect l3 r4 Outside
@@ -714,8 +713,13 @@ braid = do
   return ()
 
 
+finalTC :: Stringnet
 finalTC = execState braid initialTC
+
+finalVertex :: InteriorVertex
 finalVertex = vertices finalTC !! 0
+
+finalMorphism :: Morphism
 finalMorphism = morphismLabel finalTC finalVertex
 
 

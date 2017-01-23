@@ -37,7 +37,7 @@ nu = 1
 
 -- group element, assuming cyclicity
 -- dependent types would be nice here
-data GroupElement = GroupElement Int deriving (Show)
+newtype GroupElement = GroupElement Int deriving (Show)
 
 instance Eq GroupElement where
   (GroupElement a) == (GroupElement b) = (a `mod` order) == (b `mod` order)
@@ -61,15 +61,18 @@ newtype RootOfUnity = RootOfUnity GroupElement deriving (Eq, Monoid, Group)
 
 -- A scalar is an algebraic integer over the cyclotomic field corresponding
 -- to the order of the group.
-data Scalar =  Scalar {
-  coefficient :: RootOfUnity -> Int
-  }
+newtype Scalar =  Scalar [Int]
 
-
+coefficient :: Scalar -> RootOfUnity -> Int
+coefficient (Scalar coeffs) r =
+  case r of RootOfUnity g ->
+              case g of GroupElement i ->
+                          coeffs !! i
+                                        
 toCoeffList :: Scalar -> [Int]
-toCoeffList (Scalar coeff) =
+toCoeffList s =
   let domain = map RootOfUnity group in
-    map coeff domain
+    map (coefficient s) domain
 
 instance Show Scalar where
   show = show . toCoeffList
@@ -78,30 +81,43 @@ instance Eq Scalar where
   s == t = (toCoeffList s) == (toCoeffList t)
 
 -- http://mathworld.wolfram.com/GroupConvolution.html
-convolve :: Num c =>  (RootOfUnity -> c) -> (RootOfUnity -> c) -> (RootOfUnity -> c)
-convolve a b = \g -> sum $ map (\k -> (a k)*(b $ (invert k) `mappend` g)) $ map RootOfUnity group
-  
+-- convolve :: Num c =>  (RootOfUnity -> c) -> (RootOfUnity -> c) -> (RootOfUnity -> c)
+-- convolve a b = \g -> sum $ map (\k -> (a k)*(b $ (invert k) `mappend` g)) $ map RootOfUnity group
 
+-- Source: https://www.blaenkdenum.com/posts/naive-convolution-in-haskell/
+convolve :: (Num a) => [a] -> [a] -> [a]
+convolve hs xs =
+  let pad = replicate ((length hs) - 1) 0
+      ts  = pad ++ xs
+  in map (sum . zipWith (*) (reverse hs)) (init $ L.tails ts)
+
+-- Use the fact that \zeta^n = 1
+reduce :: [Int] -> [Int]
+reduce xs =
+  if length xs < order
+  then xs ++ replicate (order - length xs) 0
+  else zipWith (+) (take order xs) (reduce $ drop order xs)
+                                          
 instance Num Scalar where
-  s + t = Scalar $ \x -> (coefficient s x) + (coefficient t x)
-  negate s = Scalar $ \x -> coefficient s (invert x)
-  s * t =  Scalar $ convolve (coefficient s) (coefficient t)
-  fromInteger x = Scalar $ \r ->
-    if r == (RootOfUnity $ GroupElement 0)
-    then fromIntegral x
-    else 0
+  (Scalar xs) + (Scalar ys) = Scalar $ zipWith (+) xs ys
+  (Scalar xs) * (Scalar ys) =  Scalar $ reduce $ convolve xs ys
+  fromInteger x = Scalar $ [fromIntegral x] ++ (replicate (order - 1) 0)   
+  negate (Scalar xs) = undefined
   signum s = undefined
   abs s = undefined
 
 
+fromFunction :: (RootOfUnity -> Int) -> Scalar
+fromFunction f =
+  Scalar [f $ RootOfUnity $ GroupElement $ x | x <- [0..(order - 1)]]
 
 fromBag :: [RootOfUnity] -> Scalar
-fromBag rs = Scalar $ \r ->
+fromBag rs = fromFunction $ \r ->
   length $ L.elemIndices r rs
 
 
 fromRootOfUnity :: RootOfUnity -> Scalar
-fromRootOfUnity x = Scalar $ \y ->
+fromRootOfUnity x = fromFunction $ \y ->
   if y == x
   then 1
   else 0
@@ -165,8 +181,8 @@ scalarMorphism s = toMorphism (M.fromLists [[s]])
 groupSum :: (GroupElement -> Scalar) -> Morphism
 groupSum f = toMorphism $ M.diagonal 0 $ V.generate order (f . GroupElement)
 
-fromFunction :: (GroupElement -> GroupElement -> Scalar) -> Sum Int -> Morphism
-fromFunction f exp = let
+morFromFunction :: (GroupElement -> GroupElement -> Scalar) -> Sum Int -> Morphism
+morFromFunction f exp = let
   f2 (x,y) =  f (GroupElement $ x + 1) (GroupElement $ y + 1)
   in
     Morphism [TauMatrix (M.matrix order order f2) exp]
@@ -265,7 +281,7 @@ alpha (GE a) M (GE b) = scalarMorphism (chi a b)
 alpha (GE _) M M = groupSum (\_ -> 1)
 alpha M M (GE _) = groupSum (\_ -> 1)
 alpha M (GE a) M = groupSum (\b -> chi a b)
-alpha M M M = fromFunction (\x y -> (chiI x y)) 1
+alpha M M M = morFromFunction (\x y -> (chiI x y)) 1
 
 
 alphaI :: SimpleObject -> SimpleObject -> SimpleObject -> Morphism
@@ -276,7 +292,7 @@ alphaI (GE a) M (GE b) = scalarMorphism (chiI a b)
 alphaI (GE _) M M = groupSum (\x -> 1)
 alphaI M M (GE _) = groupSum (\x -> 1)
 alphaI M (GE a) M = groupSum (\b -> chiI a b)
-alphaI M M M = fromFunction (\x y -> (chi x y)) (-1)
+alphaI M M M = morFromFunction (\x y -> (chi x y)) (-1)
 
 coev :: SimpleObject -> Morphism
 coev M = toMorphism $ M.matrix 1 order $ \ij ->

@@ -2,20 +2,24 @@
 A Haskell library for stringnet calculations 
 --------------------
 
-Currently, the executable computes the representation of a braid generator in the Turaev-Viro-Barrett-Westbury 
-TQFT representation in terms of the structural morphisms of an arbitrary spherical category.
+The executable currently computes the representation of a braid
+generator in the Turaev-Viro-Barrett-Westbury TQFT representation in
+terms of the structural morphisms of an arbitrary spherical category.
 
 
 References and notes
 --------------------
 
- * [String-net model of Turaev-Viro invariants](https://arxiv.org/abs/1106.6033), Alexander Kirillov Jr. This
-   paper describes the stringnet model of the representation space.
+ * [String-net model of Turaev-Viro
+   invariants](https://arxiv.org/abs/1106.6033), Alexander Kirillov
+   Jr. This paper describes the stringnet model of the representation
+   space.
    
- * [Finiteness for Mapping Class Group Representations from Twisted Dijkgraaf-Witten Theory]
-   (https://arxiv.org/abs/1610.06069), Paul Gustafson. 
-   The figures in this paper give (most of) the local moves for computing the representations 
-   of mapping class group generators
+ * [Finiteness for Mapping Class Group Representations from Twisted
+   Dijkgraaf-Witten Theory] (https://arxiv.org/abs/1610.06069), Paul
+   Gustafson.  The figures in this paper give (most of) the local
+   moves for computing the representations of mapping class group
+   generators
 
    
 Author

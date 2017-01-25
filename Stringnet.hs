@@ -25,7 +25,7 @@
 
 module Stringnet where
 
-import Prelude hiding (product)
+import Prelude hiding (product, Left, Right)
 import           Control.Monad.State
 import           Data.Semigroup
 import qualified Data.Tree as T
@@ -159,7 +159,6 @@ toDataTree (Leaf x) = T.Node (Just x) []
 toDataTree (Node x y) = T.Node Nothing [toDataTree x, toDataTree y]
 
 
-
 -- Pretty print
 pprint :: (Show a) => Tree a-> IO ()
 pprint = putStr. T.drawTree . fmap (\x -> case x of
@@ -250,6 +249,7 @@ flatten :: Tree a -> [a]
 flatten (Leaf x) = [x] 
 flatten (Node x y) = (flatten x) ++ (flatten y)
 
+
 replace :: (Eq a) => Tree a -> Tree a -> Tree a -> Tree a
 replace subTree1 subTree2 bigTree = 
   if bigTree == subTree1
@@ -259,27 +259,109 @@ replace subTree1 subTree2 bigTree =
     Node x y -> Node (replace subTree1 subTree2 x)
                 (replace subTree1 subTree2 y)
 
+
+-- Test: replacePlusH Phi (Node (Leaf (Reverse (IE
+-- RightLoop))) (Node (Leaf (IE RightLeg)) (Leaf (IE RightLoop)))) (Leaf $ IE
+-- RightLoop) (initialEdgeTree $ IV Main)
+--
+replacePlusH :: Morphism -> Tree Edge -> Tree Edge -> Tree Edge -> (Tree Edge, Tree Morphism)
+replacePlusH m oldSubTree newSubTree bigTree = 
+  if bigTree == oldSubTree
+  then (newSubTree, Leaf m)
+  else case bigTree of
+    Leaf x  -> (Leaf x, Leaf $ Id $ objectLabel x)
+    Node x y ->
+      let
+        (tex, tmx) = replacePlusH m oldSubTree newSubTree x
+        (tey, tmy) = replacePlusH m oldSubTree newSubTree y
+      in
+        (Node tex tey, Node tmx tmy)
+
+tensorMTree :: Tree Morphism -> Morphism
+tensorMTree (Leaf m) = m
+tensorMTree (Node x y) = TensorM (tensorMTree x) (tensorMTree y)
+
+replacePlus :: Morphism -> Tree Edge -> Tree Edge -> Tree Edge -> (Tree Edge, Morphism)
+replacePlus m oldSubTree newSubTree bigTree =
+  let (eTree, mTree) = replacePlusH m oldSubTree newSubTree bigTree in
+    (eTree, tensorMTree mTree)
+
+-- TODO: debug the following 
+--
+-- data Side = Left | Right
+--
+-- associate :: Side -> InteriorVertex -> Tree Edge -> State Stringnet (Tree Edge)
+-- associate side v0 subTree@(Node x y) =
+--   let
+--     (newSubTree, unaugmentedMorphism) = case side of
+--       Left -> case y of
+--         Node y0 y1 -> (Node x (Node y0 y1),
+--                         AlphaI (treeLabel x) (treeLabel y0) (treeLabel y1))
+--       Right -> case x of
+--         Node x0 x1 -> (Node (Node x0 x1) y,
+--                        Alpha (treeLabel x0) (treeLabel x1) (treeLabel y))
+--   in      
+--     state $ \tc ->
+--     (newSubTree,
+--          let
+--             (newEdgeTree, morphism) = replacePlus
+--               unaugmentedMorphism
+--               subTree newSubTree $ edgeTree tc $ IV v0
+--          in
+--            tc
+--            { edgeTree = \v ->
+--                if v == IV v0
+--                then newEdgeTree
+--                else edgeTree tc v
+                      
+--            , morphismLabel = \v ->
+--                if v == v0
+--                then Compose morphism
+--                     (morphismLabel tc v)
+--                else morphismLabel tc v
+--            }
+--         )
+
+-- associateL :: InteriorVertex -> Tree Edge -> State Stringnet (Tree Edge)
+-- associateL = associate Left 
+
+-- associateR :: InteriorVertex -> Tree Edge -> State Stringnet (Tree Edge)
+-- associateR = associate Right
+
+
+
+--  Test: 
+--  let a = associateL Main (Node (Leaf (Reverse (IE RightLoop))) (Node (Leaf (IE RightLeg)) (Leaf (IE RightLoop)))) 
+--  let tc2 = execState a initialTC
+--  edgeTree tc2 $ IV Main
+
 associateL :: InteriorVertex -> Tree Edge -> State Stringnet (Tree Edge)
 associateL v0 subTree@(Node x yz) =
   case yz of
     Node y z ->
       let newSubTree = (Node (Node x y) z) in
         state $ \tc ->
-        (newSubTree, 
-         tc
-         { edgeTree = \v ->
-             if v == IV v0
-             then replace subTree newSubTree $ edgeTree tc v
-             else edgeTree tc v
-                  
-         , morphismLabel = \v ->
-             if v == v0
-             then Compose (AlphaI (treeLabel x) (treeLabel y)
+        (newSubTree,
+         let
+           (newEdgeTree, morphism) = replacePlus
+               (AlphaI (treeLabel x) (treeLabel y)
                            (treeLabel z))
-                  (morphismLabel tc v)
-             else morphismLabel tc v
-         }
+               subTree newSubTree $ edgeTree tc $ IV v0
+         in
+           tc
+           { edgeTree = \v ->
+               if v == IV v0
+               then newEdgeTree
+               else edgeTree tc v
+                    
+           , morphismLabel = \v ->
+               if v == v0
+               then Compose morphism
+                    (morphismLabel tc v)
+               else morphismLabel tc v
+           }
         )
+
 
 associateR :: InteriorVertex -> Tree Edge -> State Stringnet (Tree Edge)
 associateR v0 subTree@(Node xy z) =
@@ -288,19 +370,23 @@ associateR v0 subTree@(Node xy z) =
       let newSubTree = (Node x (Node y z)) in
         state $ \tc ->
                   (newSubTree,
-                   tc
-                    { edgeTree = \v ->
-                        if v == IV v0
-                        then replace subTree newSubTree $ edgeTree tc v
-                        else edgeTree tc v
-                         
-                    , morphismLabel = \v ->
-                        if v == v0
-                        then Compose (Alpha (treeLabel x)
-                                      (treeLabel y) (treeLabel z))
-                             (morphismLabel tc v)
-                        else morphismLabel tc v
-                    }
+                   let
+                     (newEdgeTree, morphism) = replacePlus
+                       (Alpha (treeLabel x) (treeLabel y) (treeLabel z))
+                       subTree newSubTree $ edgeTree tc $ IV v0
+                   in
+                     tc
+                     { edgeTree = \v ->
+                         if v == IV v0
+                         then newEdgeTree
+                         else edgeTree tc v
+                              
+                     , morphismLabel = \v ->
+                         if v == v0
+                         then Compose (morphism)
+                              (morphismLabel tc v)
+                         else morphismLabel tc v
+                     }
                   )
 
 
@@ -634,7 +720,7 @@ initialEdgeTree v = case v of
        (Leaf $ Reverse $ IE LeftLoop)
        (Node
          (Leaf $ IE LeftLeg)
-         (Leaf $ IE LeftLoop)
+        (Leaf $ IE LeftLoop)
        )                                                          
      )
 
@@ -738,11 +824,11 @@ finalMorphism = morphismLabel finalTC finalVertex
 -- TESTS
 
 -- PASS
--- testTC = execState (isolate2 LeftLoop LeftLeg Main) initialTC
--- pprint $ edgeTree testTC Main
+-- testTC = execState (isolate2 (IE LeftLoop) (IE LeftLeg) Main) initialTC
+-- pprint $ edgeTree testTC $ IV Main
 
 -- PASS
--- test =  execState (isolate2 (rev RightLoop) LeftLoop  Main) initialTC
+test =  execState (isolate2 (rev $ IE RightLoop) (IE LeftLoop)  Main) initialTC
 -- p =  pprint $ edgeTree testTC2 Main
 
 -- PASS

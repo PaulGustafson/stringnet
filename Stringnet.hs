@@ -6,6 +6,11 @@
 -- We encode a stringnet as a marked CW-complex.
 -- For now, all duals are right duals.
 --
+-- FIXME: Add Id's to RhoI and everything.  Do I need every
+-- composition to deal with edgeTrees?
+--
+-- TODO: Refactor so that constructors are lower case methods
+--       Uppercase should be destructors only
 --
 -- TODO: Calculate an actual R-matrix of a simple TY category.
 --
@@ -127,6 +132,10 @@ data Morphism = Phi
               | Compose Morphism Morphism
               deriving (Show)
 
+toTensorTree :: Morphism -> Tree Morphism
+toTensorTree (TensorM x y) =
+  Node (toTensorTree x) (toTensorTree y)
+toTensorTree x = Leaf x
 
 toCompositionTree :: Morphism -> Tree Morphism
 toCompositionTree (Compose x y) =
@@ -135,11 +144,6 @@ toCompositionTree x = Leaf x
 
 toCompositionList :: Morphism -> [Morphism]
 toCompositionList = flatten . toCompositionTree
-
-toTensorTree :: Morphism -> Tree Morphism
-toTensorTree (TensorM x y) =
-  Node (toTensorTree x) (toTensorTree y)
-toTensorTree x = Leaf x
 
 toTree :: Morphism -> T.Tree (Maybe Morphism)
 toTree m@(Compose _ _) =
@@ -153,6 +157,12 @@ toTree x = T.Node (Just x) []
 
 instance Semigroup Morphism where
   a <> b = Compose a b
+
+
+--FIXME
+-- compose :: Morphism -> Morphism -> (Int,Int) -> Morphism
+-- compose a b = Compose a b
+  
 
 toDataTree :: Tree a -> T.Tree (Maybe a)
 toDataTree (Leaf x) = T.Node (Just x) []
@@ -650,6 +660,8 @@ connect e1 e2 d = state $ \tc ->
               (takeWhile (/= e2) $ dropWhile  (/= e1) $ cycle $ perimeter tc d)
             | otherwise -> perimeter tc d0
 
+      -- FIXME: need to add Id's
+      -- Find index of objectlabels
       , morphismLabel = \v -> case () of
         _ | v == toIV (start e1 tc) -> (RhoI $ objectLabel e1) <> morphismLabel tc v
           | v == toIV (start e2 tc) -> (RhoI $ objectLabel e2) <> morphismLabel tc v

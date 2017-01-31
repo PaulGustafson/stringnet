@@ -4,4 +4,5 @@ import Stringnet
 import TambaraYamagami
 
 main :: IO ()
-main = print $ substM finalMorphism
+main = print $ finalMorphism
+-- main = print $ substM finalMorphism

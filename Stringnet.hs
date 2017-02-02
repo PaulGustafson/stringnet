@@ -4,7 +4,8 @@
 -- MCG reps paper.
 --
 -- We encode a stringnet as a marked CW-complex.
--- For now, all duals are right duals.
+-- For now, all duals are right duals. All compositions are in
+-- standard (anti-diagrammatic) order.
 --
 -- FIXME: Add Id's to RhoI and everything.  Do I need every
 -- composition to deal with edgeTrees?
@@ -115,7 +116,10 @@ data Object = OVar InitialEdge -- Object variable labeling edge
                            -- pattern match, use "star" instead
             | TensorO Object Object
             deriving (Show)  
-                                                           
+
+tensorO :: Object -> Object -> Object
+tensorO o1 o2 = o1 `TensorO` o2
+
 data Morphism = Phi
               | Id Object
               | Lambda Object -- 1 V -> V
@@ -152,16 +156,22 @@ toTree (TensorM x y) =
   T.Node Nothing [(toTree x), (toTree y)]
 toTree x = T.Node (Just x) []
 
--- domain :: Morphism -> Object
--- domain Phi = 
 
 instance Semigroup Morphism where
   a <> b = Compose a b
 
+-- Should I keep associativity of tensors of morphisms?  This should
+-- match up with the tensor associations of the domain and codomain.
+-- tensorM :: [Morphism] -> Morphism
 
---FIXME
--- compose :: Morphism -> Morphism -> (Int,Int) -> Morphism
--- compose a b = Compose a b
+
+-- FIXME
+-- compose :: Morphism -> Morphism -> Int -> Int -> Morphism
+-- compose m1 m2 i1 i2 =
+--   let
+--     augmentedM1 = 
+--   in
+--   Compose( m1)   m2
   
 
 toDataTree :: Tree a -> T.Tree (Maybe a)
@@ -637,35 +647,43 @@ connect :: Edge -> Edge -> Disk -> State Stringnet Edge
 connect e1 e2 d = state $ \tc -> 
   let connection = Connector e1 e2 d in
   ( connection
-  , tc
-      { edges = [connection] ++ edges tc
+  ,
+    let
+      (edgeTree1, morphism1) =
+        replacePlus (RhoI $ objectLabel e1)
+        (Leaf e1) (Node (Leaf e1) (Leaf $ connection))
+        (edgeTree tc $ start e1 tc)
 
+      (edgeTree2, morphism2) =
+        replacePlus (RhoI $ objectLabel e2)
+        (Leaf e2) (Node (Leaf e2) (Leaf $ rev connection))
+        (edgeTree tc $ start e2 tc)
+    in
+
+      tc
+      { edges = [connection] ++ edges tc
+      
       , disks = [Cut connection, Cut $ rev connection]
                 ++ [d2 | d2 <- disks tc
                        , d2 /= d]
-
+        
       , edgeTree = \v -> case () of
-        _ | v ==  (start e1 tc) -> replace (Leaf e1)
-                                (Node (Leaf e1) (Leaf $ connection))
-                                $ edgeTree tc v
-          | v ==  (start e2 tc) -> replace (Leaf e2)
-                                (Node (Leaf e2) (Leaf $ rev connection))
-                                $ edgeTree tc v
-          | otherwise        -> edgeTree tc v
-
+          _ | v ==  (start e1 tc) -> edgeTree1
+            | v ==  (start e2 tc) -> edgeTree2
+            | otherwise           -> edgeTree tc v
+      
       , perimeter = \d0 -> case () of
           _ | d0 == Cut connection -> [connection] ++
-              (takeWhile (/= e1) $ dropWhile (/= e2) $ cycle $ perimeter tc d)
+                           (takeWhile (/= e1) $ dropWhile (/= e2) $ cycle $ perimeter tc d)
             | d0 == Cut (rev connection) -> [rev connection] ++
-              (takeWhile (/= e2) $ dropWhile  (/= e1) $ cycle $ perimeter tc d)
+                                            (takeWhile (/= e2) $ dropWhile  (/= e1) $ cycle $ perimeter tc d)
             | otherwise -> perimeter tc d0
-
-      -- FIXME: need to add Id's
-      -- Find index of objectlabels
+      
+        -- Find index of objectlabels
       , morphismLabel = \v -> case () of
-        _ | v == toIV (start e1 tc) -> (RhoI $ objectLabel e1) <> morphismLabel tc v
-          | v == toIV (start e2 tc) -> (RhoI $ objectLabel e2) <> morphismLabel tc v
-          | otherwise        -> morphismLabel tc v
+          _ | v == toIV (start e1 tc) -> morphism1 <> morphismLabel tc v
+            | v == toIV (start e2 tc) -> morphism2 <> morphismLabel tc v
+            | otherwise               -> morphismLabel tc v
           
       }
   )
@@ -674,7 +692,7 @@ addCoev :: Edge -> State Stringnet (InteriorVertex, Edge, Edge)
 addCoev e = state $ \tc ->
   let mp  = Midpoint e
       fh = FirstHalf e
-      sh = SecondHalf e
+      sh = SecondHalf e       
   in
   ((mp, fh, sh), tc 
                 { vertices =  [mp] ++ vertices tc

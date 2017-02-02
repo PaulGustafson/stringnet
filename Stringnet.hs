@@ -7,8 +7,6 @@
 -- For now, all duals are right duals. All compositions are in
 -- standard (anti-diagrammatic) order.
 --
--- FIXME: Add Id's to RhoI and everything.  Do I need every
--- composition to deal with edgeTrees?
 --
 -- TODO: Refactor so that constructors are lower case methods
 --       Uppercase should be destructors only
@@ -102,7 +100,6 @@ data Stringnet = Stringnet
                   -- image under contractions
                   , imageVertex    :: !(Vertex -> Vertex)     
 
-                  -- TODO: Change to Tree based on tensor structure
                   , morphismLabel :: !(InteriorVertex -> Morphism)   
 
                   -- CCW ordering, outgoing orientation
@@ -120,6 +117,8 @@ data Object = OVar InitialEdge -- Object variable labeling edge
 tensorO :: Object -> Object -> Object
 tensorO o1 o2 = o1 `TensorO` o2
 
+-- TODO: make tensor Tree structure and composition list structure more
+-- explicit
 data Morphism = Phi
               | Id Object
               | Lambda Object -- 1 V -> V
@@ -160,18 +159,6 @@ toTree x = T.Node (Just x) []
 instance Semigroup Morphism where
   a <> b = Compose a b
 
--- Should I keep associativity of tensors of morphisms?  This should
--- match up with the tensor associations of the domain and codomain.
--- tensorM :: [Morphism] -> Morphism
-
-
--- FIXME
--- compose :: Morphism -> Morphism -> Int -> Int -> Morphism
--- compose m1 m2 i1 i2 =
---   let
---     augmentedM1 = 
---   in
---   Compose( m1)   m2
   
 
 toDataTree :: Tree a -> T.Tree (Maybe a)
@@ -193,7 +180,7 @@ toIV (IV v) = v
 
 rev :: Edge -> Edge
 rev (Reverse e) = e
--- TODO: (need to deal with Eq instance)
+-- MAYBE: (need to deal with Eq instance)
 -- rev (TensorE a b) = TensorE (rev a) (rev b)
 rev e = Reverse e
 

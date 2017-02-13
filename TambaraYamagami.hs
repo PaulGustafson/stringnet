@@ -11,14 +11,12 @@
 -- Kenichi Shimizu. Frobenius-Schur indicators in Tambara-Yamagami
 -- categories.
 --
--- FIXME: Change Scalar class to include tau exponent
---        Objects should be represented by multiplicity lists
---        so that they are represented uniquely.
---        Morphisms should be maps of indexed objects
 --
--- TODO: write unit tests for important methods
+-- TODO: Write unit tests for important methods.
 --
--- TODO: Give Morphism a Num instance wrt direct sum + tensor product
+-- TODO: Write Num instances.
+--
+-- TODO: Dehackify ev method.
 --
 -- TODO: implement simple reductions for scalars,
 -- e.g. \sum_{i=0}^{p-1} \zeta^i = 0
@@ -614,7 +612,7 @@ ev o =
         [[ --FIXME: the following is a hack
             if multiplicity domain0 M > 0
             then tauI
-            else tau
+            else 1
          ]
         ,  replicate
            (multiplicity domain0 one)

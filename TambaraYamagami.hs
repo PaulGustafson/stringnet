@@ -561,39 +561,60 @@ alphaI f o1 o2 o3 =
   }
 
 
+-- coevSO :: SimpleObject -> Morphism
+-- coevSO M =
+--   Morphism
+--   { domain = toObject one
+--   , codomain = groupObject
+--   , subMatrix = \so ->
+--       if so == one
+--       then M.fromLists [[1]]
+--       else emptyMatrix
+--   }
+-- coevSO so@(AE _) = scalarMorphism so 1
 
-
-coevSO :: SimpleObject -> Morphism
-coevSO M =
-  Morphism
-  { domain = toObject one
-  , codomain = groupObject
-  , subMatrix = \so ->
-      if so == one
-      then M.fromLists [[1]]
-      else emptyMatrix
-}
-coevSO so@(AE _) = scalarMorphism so 1
 
 coev :: Object -> Morphism
 coev o =
-  Morphism
-  { domain = toObject one
-  , codomain = (star o) `tensorO` o
-  , subMatrix = \so -> linearize1 coevSO so
-  }
+  let codomain0 = (star o) `tensorO` o in        
+    Morphism
+    { domain = toObject one
+    , codomain = codomain0
+    , subMatrix = \so ->
+        if so == one
+        then M.fromLists [[1],
+                           replicate
+                           (multiplicity codomain0 one)
+                           [0]]
+        else emptyMatrix
+    }
       
 
-ev :: SimpleObject -> Morphism
-ev M =  Morphism
-  { domain = groupObject
-  , codomain = toObject one
-  , subMatrix = \so ->
-      if so == one
-      then M.fromLists [[tauI]]
-      else emptyMatrix
-  }
-ev so@(AE _) = scalarMorphism so 1
+-- ev :: SimpleObject -> Morphism
+-- ev M =  Morphism
+--   { domain = groupObject
+--   , codomain = toObject one
+--   , subMatrix = \so ->
+--       if so == one
+--       then M.fromLists [[tauI]]
+--       else emptyMatrix
+--   }
+-- ev so@(AE _) = scalarMorphism so 1
+
+ev :: Object -> Morphism
+ev =
+  let domain0 = o `tensorO` (star o) in        
+    Morphism
+    { domain = domain0
+    , codomain = toObject one
+    , subMatrix = \so ->
+        if so == one
+        then M.fromLists [[-- 1, --FIXME: tauI for M?
+                           replicate
+                           (multiplicity codomain0 one)
+                           0]
+        else emptyMatrix
+    }
 
 pivotalJ :: SimpleObject -> Morphism
 pivotalJ so = scalarMorphism so $

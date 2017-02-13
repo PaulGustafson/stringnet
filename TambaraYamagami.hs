@@ -172,13 +172,14 @@ data Object = Object
   { multiplicity :: SimpleObject -> Int
   }
 
-instance Num Object where
-  o1 + o2 = Object $ multiplicity o1 + multiplicity o2
-  o1 * o2 = o1 `tensorO` o2
-  fromInteger = undefined -- could change
-  negate _ = undefined
-  signum _ = undefined
-  abs _ = undefined
+-- TODO: fix this
+-- instance Num Object where
+--   o1 + o2 = Object $ multiplicity o1 + multiplicity o2
+--   o1 * o2 = o1 `tensorO` o2
+--   fromInteger = undefined -- could change
+--   negate _ = undefined
+--   signum _ = undefined
+--   abs _ = undefined
 
 toObject :: SimpleObject -> Object
 toObject x = Object { multiplicity = \y ->
@@ -215,14 +216,18 @@ data Morphism = Morphism
 --   abs _ = undefined
 
 
-idMorphism :: Object -> Morphism
-idMorphism o@(Object multiplicity) =
+scalarMorphism :: Object -> Scalar -> Morphism
+scalarMorphism o scalar =
   Morphism
   { domain = o
   , codomain = o
   , subMatrix = \so ->
-      M.diagonal 0 (V.replicate (multiplicity so) 1)      
+      M.diagonal 0 (V.replicate (multiplicity o so) scalar)      
   }
+
+
+idMorphism :: Object -> Morphism
+idMorphism o = scalarMorphism o 1
 
 
 -- projection :: Object -> Int -> Morphism
@@ -236,16 +241,6 @@ idMorphism o@(Object multiplicity) =
 
 emptyMatrix = M.matrix 0 0 undefined
 
-scalarMorphism :: SimpleObject -> Scalar -> Morphism
-scalarMorphism domain0 scalar =
-  Morphism
-  { domain = domain0
-  , codomain = domain0
-  , subMatrix = \so ->
-      if so == domain0
-      then M.fromLists [[scalar]]
-      else emptyMatrix
-  }
 
 groupObject :: Object
 groupObject =
@@ -268,8 +263,8 @@ groupSum f =  --M.diagonal 0 $ V.generate order (f . AElement)
   }
 
 -- Turn a scalar function on A \times A into a matrix
-toMatrix :: (AElement -> AElement -> Scalar) -> M.Matrix
-toMatrix f exp = let
+toMatrix :: (AElement -> AElement -> Scalar) -> M.Matrix Scalar
+toMatrix f = let
   f2 (x,y) =  f (AElement $ x + 1) (AElement $ y + 1)
   in
     M.matrix order order f2
@@ -355,7 +350,7 @@ kronecker f g =
 --   transpose $ expandRow (transpose M) index multiple
 
 tensorSO :: SimpleObject -> SimpleObject -> Object
-tensorSO M M = Object $ map AE group
+tensorSO M M = groupObject
 tensorSO M (AE _) = toObject M
 tensorSO (AE _) M = toObject M
 tensorSO (AE g1) (AE g2) = toObject $ AE $ g1 `mappend` g2
@@ -387,31 +382,33 @@ tensorM m1 m2 =
   }
 
 
-linearize :: (Num a) => ([SimpleObject] -> a) -> [Object] -> a
+linearize :: ([SimpleObject] -> M.Matrix Scalar) -> [Object] -> M.Matrix Scalar
 linearize f os =
   let
     soTuples = CM.replicateM (length os) allSimpleObjects
   in
     sum $
     map (\sos ->
-           (product $ zipWith multiplicity os sos) * (f sos)
+           M.scaleMatrix
+           (fromInteger $ fromIntegral $ product $ zipWith multiplicity os sos)
+           (f sos)
         )
     soTuples
 
-linearize1 :: (Num a) => (SimpleObject ->  a)
-  -> (Object -> a)
+linearize1 :: (SimpleObject ->  M.Matrix Scalar)
+  -> (Object -> M.Matrix Scalar)
 linearize1 f o1 = 
   linearize (\sos -> f (sos !! 0)) [o1]
 
 
-linearize2 :: (Num a) => (SimpleObject -> SimpleObject -> a)
-  -> (Object -> Object -> a)
+linearize2 :: (SimpleObject -> SimpleObject -> M.Matrix Scalar)
+  -> (Object -> Object -> M.Matrix Scalar)
 linearize2 f o1 o2 = 
   linearize (\sos -> f (sos !! 0) (sos !! 1)) [o1, o2]
 
 
-linearize3 :: (Num a) => (SimpleObject -> SimpleObject -> SimpleObject -> a)
-  -> (Object -> Object -> Object -> a)
+linearize3 :: (SimpleObject -> SimpleObject -> SimpleObject -> M.Matrix Scalar)
+  -> (Object -> Object -> Object -> M.Matrix Scalar)
 linearize3 f o1 o2 o3 = 
   linearize (\sos -> f (sos !! 0) (sos !! 1) (sos !! 2)) [o1, o2, o3]
 
@@ -492,7 +489,7 @@ alphaSO :: SimpleObject -> SimpleObject -> SimpleObject -> Morphism
 alphaSO (AE g1) (AE g2) (AE g3) = idMorphism $ toObject $ AE $ g1 `mappend` g2 `mappend` g3
 alphaSO (AE _) (AE _) M = idMorphism $ toObject M
 alphaSO M (AE _) (AE _) = idMorphism $ toObject M
-alphaSO (AE a) M (AE b) = scalarMorphism (chi a b)
+alphaSO (AE a) M (AE b) = scalarMorphism (toObject M) (chi a b)
 alphaSO (AE _) M M = groupSum (\_ -> 1)
 alphaSO M M (AE _) = groupSum (\_ -> 1)
 alphaSO M (AE a) M = groupSum (\b -> chi a b)
@@ -511,24 +508,26 @@ alphaSO M M M =
     , codomain = domain0
     , subMatrix = \so ->
         case so of
-          M ->  toMatrix (tau * chiI)
+          M ->  toMatrix $ \x y -> tau * chiI x y
           AE _ -> emptyMatrix
     }
 
 alpha :: Object -> Object -> Object -> Morphism
-alpha f o1 o2 o3 =
+alpha o1 o2 o3 =
   Morphism
   { domain = (o1 `tensorO` o2) `tensorO` o3
   , codomain =   o1 `tensorO` (o2 `tensorO` o3)
   , subMatrix = \so ->
-      linearize3 ((subMatrix so) . alphaSO)
+      linearize3 (\so1 so2 so3 ->
+                    subMatrix (alphaSO so1 so2 so3) so)
+      o1 o2 o3
   }
 
 alphaISO :: SimpleObject -> SimpleObject -> SimpleObject -> Morphism
 alphaISO (AE g1) (AE g2) (AE g3) = idMorphism $ toObject $ AE $ g1 `mappend` g2 `mappend` g3
 alphaISO (AE _) (AE _) M = idMorphism $ toObject M
 alphaISO M (AE _) (AE _) = idMorphism $ toObject M
-alphaISO (AE a) M (AE b) = scalarMorphism (chiI a b)
+alphaISO (AE a) M (AE b) = scalarMorphism (toObject M) (chiI a b)
 alphaISO (AE _) M M = groupSum (\_ -> 1)
 alphaISO M M (AE _) = groupSum (\_ -> 1)
 alphaISO M (AE a) M = groupSum (\b -> chiI a b)
@@ -547,17 +546,19 @@ alphaISO M M M =
     , codomain = domain0
     , subMatrix = \so ->
         case so of
-          M ->    toMatrix (tauI * chi) 
+          M ->    toMatrix $ \x y -> tauI * chi x y
           AE _ -> emptyMatrix
     }
 
 alphaI :: Object -> Object -> Object -> Morphism
-alphaI f o1 o2 o3 =
+alphaI o1 o2 o3 =
   Morphism
   { domain = o1 `tensorO` (o2 `tensorO` o3)
   , codomain =  (o1 `tensorO` o2) `tensorO` o3
   , subMatrix = \so ->
-      linearize3 ((subMatrix so) . alphaISO)
+       linearize3 (\so1 so2 so3 ->
+                    subMatrix (alphaISO so1 so2 so3) so)
+       o1 o2 o3
   }
 
 
@@ -582,10 +583,10 @@ coev o =
     , codomain = codomain0
     , subMatrix = \so ->
         if so == one
-        then M.fromLists [[1],
+        then M.fromLists $ [[1]] ++ 
                            replicate
                            (multiplicity codomain0 one)
-                           [0]]
+                           [0]
         else emptyMatrix
     }
       
@@ -602,27 +603,51 @@ coev o =
 -- ev so@(AE _) = scalarMorphism so 1
 
 ev :: Object -> Morphism
-ev =
+ev o =
   let domain0 = o `tensorO` (star o) in        
     Morphism
     { domain = domain0
     , codomain = toObject one
     , subMatrix = \so ->
         if so == one
-        then M.fromLists [[-- 1, --FIXME: tauI for M?
-                           replicate
-                           (multiplicity codomain0 one)
-                           0]
+        then M.fromLists
+        [[ --FIXME: the following is a hack
+            if multiplicity domain0 M > 0
+            then tauI
+            else tau
+         ]
+        ,  replicate
+           (multiplicity domain0 one)
+           0
+        ]
         else emptyMatrix
     }
 
-pivotalJ :: SimpleObject -> Morphism
-pivotalJ so = scalarMorphism so $
-  case so of
-    M -> nu
-    AE _ -> 1
+-- pivotalJSO :: SimpleObject -> Morphism
+-- pivotalJSO so = scalarMorphism so $
+--   case so of
+--     M -> nu
+--     AE _ -> 1
 
-pivotalJI :: SimpleObject -> Morphism
+pivotalJ :: Object -> Morphism
+pivotalJ o =
+  Morphism
+  { domain = o
+  , codomain = o
+  , subMatrix = \so ->
+      M.diagonal 0
+      (V.replicate (multiplicity o so) $
+        case so of
+          M -> nu
+          AE _ -> 1
+      )
+  }
+      
+
+-- pivotalJISO :: SimpleObject -> Morphism
+-- pivotalJISO = pivotalJSO
+
+pivotalJI :: Object -> Morphism
 pivotalJI = pivotalJ
 
 -- standard (nondiagrammatic) order 
@@ -646,12 +671,12 @@ substM m = case m of
   S.Rho o -> idMorphism $ substO o
   S.RhoI o -> idMorphism $ substO o
   S.TensorM m1 m2 -> (substM m1) `tensorM` (substM m2)
-  S.Alpha o1 o2 o3 -> alpha o1 o2 o3
-  S.AlphaI o1 o2 o3 -> alphaI o1 o2 o3
-  S.Coev o -> sconcat $ N.fromList $ map coev $ summandsO $ substO o
-  S.Ev   o -> sconcat $ N.fromList $ map   ev $ summandsO $ substO o
-  S.PivotalJ  o -> sconcat $ N.fromList $ map pivotalJ  $ summandsO $ substO o
-  S.PivotalJI o -> sconcat $ N.fromList $ map pivotalJI $ summandsO $ substO o
+  S.Alpha o1 o2 o3 -> alpha (substO o1) (substO o2) (substO o3)
+  S.AlphaI o1 o2 o3 -> alphaI (substO o1) (substO o2) (substO o3)
+  S.Coev o -> coev $ substO o
+  S.Ev   o -> ev $ substO o
+  S.PivotalJ  o -> pivotalJ $ substO o
+  S.PivotalJI o -> pivotalJI $ substO o
   S.Compose m1 m2 -> compose (substM m1) (substM m2)
 
 

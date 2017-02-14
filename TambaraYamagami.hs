@@ -11,14 +11,13 @@
 -- Kenichi Shimizu. Frobenius-Schur indicators in Tambara-Yamagami
 -- categories.
 --
---
 -- TODO: Write unit tests for important methods.
 --
 -- TODO: Write Num instances.
 --
 -- TODO: Dehackify ev method.
 --
--- TODO: implement simple reductions for scalars,
+-- TODO: Implement simple reductions for scalars,
 -- e.g. \sum_{i=0}^{p-1} \zeta^i = 0
 --
 
@@ -369,10 +368,15 @@ tensorSO (AE g1) (AE g2) = toObject $ AE $ g1 `mappend` g2
 
 
 -- TODO: deal with higher multiplicity
+-- tensorInv :: SimpleObject -> [(SimpleObject, SimpleObject)]
+-- tensorInv so = [(x,y) | x <- allSimpleObjects
+--                       , y <- allSimpleObjects
+--                       , multiplicity (x `tensorSO` y) so == 1]
+
 tensorInv :: SimpleObject -> [(SimpleObject, SimpleObject)]
-tensorInv so = [(x,y) | x <- allSimpleObjects
-                      , y <- allSimpleObjects
-                      , multiplicity (x `tensorSO` y) so == 1]
+tensorInv M = (zipWith (,) (map AE group) (repeat M))
+              ++ (zipWith (,) (repeat M) (map AE group))
+tensorInv (AE g0) = [(AE $ g0 `plus` g, AE $ invert g) | g <- group]
 
 
 -- Given an additive function $f$ on objects, 
@@ -408,12 +412,10 @@ linearize f os =
     soTuples = CM.replicateM (length os) allSimpleObjects
   in
     foldl directSum emptyMatrix $ -- sum $
+    concat $
     map (\sos ->
-           M.scaleMatrix
-           (fromInteger $ fromIntegral $
-            product $
-            zipWith multiplicity os sos
-           )
+           replicate
+           (product $ zipWith multiplicity os sos)
            (f sos)
         )
     soTuples

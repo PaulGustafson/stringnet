@@ -154,21 +154,29 @@ chiI :: AElement -> AElement -> Scalar
 chiI (AElement e1) (AElement e2) = fromRootOfUnity $ RootOfUnity $ AElement $ (-e1*e2) `mod` order
 
 data SimpleObject =
-  -- non-group simple object
-  M
-
   -- Group-element-indexed simple objects
-  | AE AElement
+  AE AElement
+
+  -- non-group simple object
+  | M
                   deriving (Show,Eq)
 
 one :: SimpleObject
 one = AE $ AElement 0
 
-allSimpleObjects = [M] ++ (map AE group)
+allSimpleObjects = (map AE group) ++ [M]
 
 data Object = Object
   { multiplicity :: SimpleObject -> Int
   }
+
+instance Eq Object where
+  o1 == o2 = and $ zipWith (==)
+    (map (multiplicity o1) allSimpleObjects)
+    (map (multiplicity o2) allSimpleObjects)
+
+instance Show Object where
+  show o = show $ map (multiplicity o) allSimpleObjects
 
 -- TODO: fix this
 -- instance Num Object where
@@ -195,6 +203,12 @@ data Morphism = Morphism
   -- the only morphisms between simple objects are identity morphisms
   , subMatrix :: SimpleObject -> M.Matrix Scalar
   }
+
+-- FIXME
+instance Show Morphism where
+  show m = show $ map (subMatrix m) allSimpleObjects
+
+  
 
 -- instance Num Morphism where
 --   m1 + m2 =
@@ -289,17 +303,17 @@ toMorphism f =
           AE _ -> emptyMatrix
     }
 
--- directSum :: Num a => M.Matrix a -> M.Matrix a -> M.Matrix a
--- directSum x y = 
---   let
---     topRight = M.matrix (M.nrows x) (M.ncols y) $ \_ -> 0
---     lowerLeft = M.matrix (M.nrows y) (M.ncols x) $ \_ -> 0
---   in
---      (x M.<|> topRight)
---     M.<-> (lowerLeft M.<|> y)
+directSum :: Num a => M.Matrix a -> M.Matrix a -> M.Matrix a
+directSum x y = 
+  let
+    topRight = M.matrix (M.nrows x) (M.ncols y) $ \_ -> 0
+    lowerLeft = M.matrix (M.nrows y) (M.ncols x) $ \_ -> 0
+  in
+     (x M.<|> topRight)
+    M.<-> (lowerLeft M.<|> y)
 
--- -- instance Semigroup Morphism where
--- --   m1 <> m2 = m1 `directSum` m2
+-- instance Semigroup Morphism where
+--   m1 <> m2 = m1 `directSum` m2
 
 
 starSO :: SimpleObject -> SimpleObject
@@ -353,16 +367,24 @@ tensorSO M (AE _) = toObject M
 tensorSO (AE _) M = toObject M
 tensorSO (AE g1) (AE g2) = toObject $ AE $ g1 `mappend` g2
 
--- Given an additive function $f$ on objects, 
-tensorHelper :: (Num a) =>  (SimpleObject -> SimpleObject -> a)  -> SimpleObject -> a
-tensorHelper f so = sum $ map (uncurry f) $ tensorInv so
 
--- TODO: Double check that this really works
+-- TODO: deal with higher multiplicity
+tensorInv :: SimpleObject -> [(SimpleObject, SimpleObject)]
+tensorInv so = [(x,y) | x <- allSimpleObjects
+                      , y <- allSimpleObjects
+                      , multiplicity (x `tensorSO` y) so == 1]
+
+
+-- Given an additive function $f$ on objects, 
+tensorHelper :: (Num a) =>  (SimpleObject -> SimpleObject -> a) -> SimpleObject -> [a]
+tensorHelper f so = map (uncurry f) $ tensorInv so
+
+
 tensorO :: Object -> Object -> Object
 tensorO o1 o2 = Object {
     multiplicity =
      let prod a b = (multiplicity o1 a) * (multiplicity o2 b) in
-       tensorHelper prod
+       sum . tensorHelper prod
   }
 
 
@@ -376,19 +398,22 @@ tensorM m1 m2 =
   , subMatrix = 
       let kron so1 so2 = kronecker (subMatrix m1 so1) (subMatrix m2 so2)
       in
-        tensorHelper kron
+        foldl directSum emptyMatrix . (tensorHelper kron)
   }
 
-
+-- FIXME
 linearize :: ([SimpleObject] -> M.Matrix Scalar) -> [Object] -> M.Matrix Scalar
 linearize f os =
   let
     soTuples = CM.replicateM (length os) allSimpleObjects
   in
-    sum $
+    foldl directSum emptyMatrix $ -- sum $
     map (\sos ->
            M.scaleMatrix
-           (fromInteger $ fromIntegral $ product $ zipWith multiplicity os sos)
+           (fromInteger $ fromIntegral $
+            product $
+            zipWith multiplicity os sos
+           )
            (f sos)
         )
     soTuples
@@ -410,12 +435,6 @@ linearize3 :: (SimpleObject -> SimpleObject -> SimpleObject -> M.Matrix Scalar)
 linearize3 f o1 o2 o3 = 
   linearize (\sos -> f (sos !! 0) (sos !! 1) (sos !! 2)) [o1, o2, o3]
 
-
--- TODO: deal with higher multiplicity
-tensorInv :: SimpleObject -> [(SimpleObject, SimpleObject)]
-tensorInv so = [(x,y) | x <- allSimpleObjects
-                      , y <- allSimpleObjects
-                      , multiplicity (x `tensorSO` y) so == 1]
 
 
 -- tensorInv :: SimpleObject -> [(SimpleObject, SimpleObject)]
@@ -457,10 +476,10 @@ tensorInv so = [(x,y) | x <- allSimpleObjects
 initialLabel :: S.InitialEdge -> Object 
 initialLabel ie = 
   case ie of
-    S.LeftLoop -> toObject $ AE (AElement 1)
-    S.RightLoop -> toObject $ AE (AElement 1)
-    S.LeftLeg -> toObject $ AE (AElement 1)
-    S.RightLeg -> toObject $ AE (AElement 1)
+    S.LeftLoop -> toObject $ AE (AElement 0)
+    S.RightLoop -> toObject $ AE (AElement 0)
+    S.LeftLeg -> toObject $ AE (AElement 0)
+    S.RightLeg -> toObject $ AE (AElement 0)
 
 
 phi =  idMorphism $ substO $ S.treeLabel
@@ -583,7 +602,7 @@ coev o =
         if so == one
         then M.fromLists $ [[1]] ++ 
                            replicate
-                           (multiplicity codomain0 one)
+                           ((multiplicity codomain0 one) - 1)
                            [0]
         else emptyMatrix
     }
@@ -608,15 +627,16 @@ ev o =
     , codomain = toObject one
     , subMatrix = \so ->
         if so == one
-        then M.fromLists
+        then M.fromLists $
         [[ --FIXME: the following is a hack
-            if multiplicity domain0 M > 0
+            if multiplicity o M > 0
             then tauI
             else 1
          ]
-        ,  replicate
-           (multiplicity domain0 one)
-           0
+         ++ (replicate
+             ((multiplicity domain0 one) - 1)
+             0
+            )
         ]
         else emptyMatrix
     }
@@ -651,12 +671,15 @@ pivotalJI = pivotalJ
 -- standard (nondiagrammatic) order 
 compose :: Morphism -> Morphism -> Morphism
 compose m1 m2 =
-  Morphism
-  { domain = domain m2
-  , codomain = codomain m1
-  , subMatrix = \so ->
-      (subMatrix m1 so) * (subMatrix m2 so)
-  } 
+  if domain m1 == codomain m2
+  then 
+    Morphism
+    { domain = domain m2
+    , codomain = codomain m1
+    , subMatrix = \so ->
+        (subMatrix m1 so) * (subMatrix m2 so)
+    }
+  else error "Invalid composition"
 
     
 -- Substitute in the TY-specific morphisms

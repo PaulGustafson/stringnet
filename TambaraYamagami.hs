@@ -208,7 +208,6 @@ data Morphism = Morphism
   , subMatrix :: !(SimpleObject -> M.Matrix Scalar)
   }
 
--- FIXME
 instance Show Morphism where
   show m = show $ map (subMatrix m) allSimpleObjects
 
@@ -382,6 +381,7 @@ tensorInv :: SimpleObject -> [(SimpleObject, SimpleObject)]
 tensorInv M = (zipWith (,) (map AE group) (repeat M))
               ++ (zipWith (,) (repeat M) (map AE group))
 tensorInv (AE g0) = [(AE $ g0 `plus` g, AE $ invert g) | g <- group]
+                    ++ [(M,M)]
 
 
 -- Given an additive function $f$ on objects, 
@@ -392,8 +392,10 @@ tensorHelper f so = map (uncurry f) $ tensorInv so
 tensorO :: Object -> Object -> Object
 tensorO o1 o2 = Object {
     multiplicity =
-     let prod a b = (multiplicity o1 a) * (multiplicity o2 b) in
-       sum . tensorHelper prod
+     let jointMultiplicity a b
+           = (multiplicity o1 a) * (multiplicity o2 b)
+     in
+       sum . tensorHelper jointMultiplicity
   }
 
 
@@ -465,32 +467,43 @@ linearize3 f o1 o2 o3 =
 -- --  Initial labels
 -- ------------------------------------------------------
 
--- -- FIXME
--- initialLabel :: S.InitialEdge -> Object 
--- initialLabel ie = -- toObject $ AE (AElement 0)
---   case ie of
---     S.LeftLoop -> toObject $ M
---     S.RightLoop -> toObject $ M --AE (AElement 1)
---     S.LeftLeg -> toObject $ M --AE (AElement 1)
---     S.RightLeg -> toObject $ M --AE (AElement 1)
-
--- phi = projection
---       (substO $ S.treeLabel $ S.initialEdgeTree $ S.IV S.Main)
---       0
-
-
-
+--
 initialLabel :: S.InitialEdge -> Object 
-initialLabel ie = 
+initialLabel ie = -- toObject $ AE (AElement 0)
   case ie of
-    S.LeftLoop -> toObject $ AE (AElement 0)
-    S.RightLoop -> toObject $ AE (AElement 0)
-    S.LeftLeg -> toObject $ AE (AElement 0)
-    S.RightLeg -> toObject $ AE (AElement 0)
+    S.LeftLoop -> toObject $ M
+    S.RightLoop -> toObject $ M --AE (AElement 1)
+    S.LeftLeg -> toObject $ M --AE (AElement 1)
+    S.RightLeg -> toObject $ M --AE (AElement 1)
+
+phi =
+  let
+    domain0 =  substO $ S.treeLabel $ S.initialEdgeTree $ S.IV S.Main
+  in
+    Morphism
+    { domain = domain0
+    , codomain = toObject one
+    , subMatrix = \so ->
+        if so == one
+        then M.fromLists
+             [[1]
+               ++ replicate (multiplicity domain0 one) 0
+             ]
+        else emptyMatrix
+    }
 
 
-phi =  idMorphism $ substO $ S.treeLabel
-  $ S.initialEdgeTree $ S.IV S.Main
+-- initialLabel :: S.InitialEdge -> Object 
+-- initialLabel ie = 
+--   case ie of
+--     S.LeftLoop -> toObject $ AE (AElement 0)
+--     S.RightLoop -> toObject $ AE (AElement 0)
+--     S.LeftLeg -> toObject $ AE (AElement 0)
+--     S.RightLeg -> toObject $ AE (AElement 0)
+
+
+-- phi =  idMorphism $ substO $ S.treeLabel
+--   $ S.initialEdgeTree $ S.IV S.Main
 
 
 
@@ -686,7 +699,9 @@ compose m1 m2 =
     , subMatrix = \so ->
         (subMatrix m1 so) * (subMatrix m2 so)
     }
-  else error "Invalid composition"
+  else error $ "Invalid composition: Codomain doesn't match domain. Codomain: "
+       ++ (show $ codomain m2) ++ ". Domain: " 
+       ++ (show $ domain m1)
 
     
 -- Substitute in the TY-specific morphisms

@@ -66,8 +66,8 @@ newtype RootOfUnity = RootOfUnity AElement deriving (Eq, Monoid, Group)
 -- A scalar is an algebraic integer over the cyclotomic field corresponding
 -- to the order of the group.
 data Scalar =  Scalar 
-  { coeff :: [Int]
-  , tauExp :: Sum Int
+  { coeff :: ![Int]
+  , tauExp :: !(Sum Int)
   } deriving (Show, Eq)
 
 tau :: Scalar
@@ -154,7 +154,7 @@ chiI (AElement e1) (AElement e2) = fromRootOfUnity $ RootOfUnity $ AElement $ (-
 
 data SimpleObject =
   -- Group-element-indexed simple objects
-  AE AElement
+  AE !AElement
 
   -- non-group simple object
   | M
@@ -166,7 +166,7 @@ one = AE $ AElement 0
 allSimpleObjects = (map AE group) ++ [M]
 
 data Object = Object
-  { multiplicity :: SimpleObject -> Int
+  { multiplicity :: !(SimpleObject -> Int)
   }
 
 instance Eq Object where
@@ -196,11 +196,11 @@ toObject x = Object { multiplicity = \y ->
 
 -- Matrices of scalars 
 data Morphism = Morphism 
-  { domain   :: Object
-  , codomain :: Object
+  { domain   :: !Object
+  , codomain :: !Object
   
   -- the only morphisms between simple objects are identity morphisms
-  , subMatrix :: SimpleObject -> M.Matrix Scalar
+  , subMatrix :: !(SimpleObject -> M.Matrix Scalar)
   }
 
 -- FIXME
@@ -386,9 +386,9 @@ tensorHelper f so = map (uncurry f) $ tensorInv so
 
 tensorO :: Object -> Object -> Object
 tensorO o1 o2 = Object {
-    multiplicity =
-     let prod a b = (multiplicity o1 a) * (multiplicity o2 b) in
-       sum . tensorHelper prod
+    multiplicity = \so ->
+     let mProd a b = (multiplicity o1 a) * (multiplicity o2 b) in
+       sum $ map (uncurry mProd) $ tensorInv so
   }
 
 
@@ -405,7 +405,7 @@ tensorM m1 m2 =
         foldl directSum emptyMatrix . (tensorHelper kron)
   }
 
--- FIXME
+
 linearize :: ([SimpleObject] -> M.Matrix Scalar) -> [Object] -> M.Matrix Scalar
 linearize f os =
   let

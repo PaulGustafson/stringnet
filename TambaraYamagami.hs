@@ -165,9 +165,14 @@ one = AE $ AElement 0
 
 allSimpleObjects = (map AE group) ++ [M]
 
-data Object = Object
-  { multiplicity :: !(SimpleObject -> Int)
+newtype Object = Object
+  { multiplicity :: SimpleObject -> Int
   }
+
+-- Modularize constructor for testing different object implementations
+funToObject :: (SimpleObject -> Int) -> Object
+funToObject f = Object f
+
 
 instance Eq Object where
   o1 == o2 = and $ zipWith (==)
@@ -386,9 +391,9 @@ tensorHelper f so = map (uncurry f) $ tensorInv so
 
 tensorO :: Object -> Object -> Object
 tensorO o1 o2 = Object {
-    multiplicity = \so ->
-     let mProd a b = (multiplicity o1 a) * (multiplicity o2 b) in
-       sum $ map (uncurry mProd) $ tensorInv so
+    multiplicity =
+     let prod a b = (multiplicity o1 a) * (multiplicity o2 b) in
+       sum . tensorHelper prod
   }
 
 
@@ -405,7 +410,7 @@ tensorM m1 m2 =
         foldl directSum emptyMatrix . (tensorHelper kron)
   }
 
-
+-- FIXME
 linearize :: ([SimpleObject] -> M.Matrix Scalar) -> [Object] -> M.Matrix Scalar
 linearize f os =
   let

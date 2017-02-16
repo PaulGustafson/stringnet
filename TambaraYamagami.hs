@@ -11,6 +11,8 @@
 -- Kenichi Shimizu. Frobenius-Schur indicators in Tambara-Yamagami
 -- categories.
 --
+-- TODO: Separate constructors and destructors
+--
 -- TODO: Write unit tests for important methods.
 --
 -- TODO: Write Num instances.
@@ -163,11 +165,26 @@ data SimpleObject =
 one :: SimpleObject
 one = AE $ AElement 0
 
+toIndex :: SimpleObject -> Int
+toIndex (AE ae) = case ae of AElement i -> i
+toIndex M  =  order
+
+fromIndex :: Int -> SimpleObject
+fromIndex i = if (0 <= i && i < order)
+              then AE $ AElement i
+              else if (i == order)
+                   then M
+                   else error "Simple Object index out of bounds"
+
 allSimpleObjects = (map AE group) ++ [M]
 
 newtype Object = Object
-  { multiplicity :: SimpleObject -> Int
+  { multiplicity_ :: SimpleObject -> Int
   }
+
+multiplicity :: Object -> SimpleObject -> Int
+multiplicity = multiplicity_
+
 
 -- Modularize constructor for testing different object implementations
 funToObject :: (SimpleObject -> Int) -> Object
@@ -192,11 +209,10 @@ instance Show Object where
 --   abs _ = undefined
 
 toObject :: SimpleObject -> Object
-toObject x = Object { multiplicity = \y ->
+toObject x = funToObject $ \y ->
                   if x == y
                   then 1
                   else 0
-              }
 
 
 -- Matrices of scalars 
@@ -205,12 +221,17 @@ data Morphism = Morphism
   , codomain :: !Object
   
   -- the only morphisms between simple objects are identity morphisms
-  , subMatrix :: !(SimpleObject -> M.Matrix Scalar)
+  , subMatrix_ :: SimpleObject -> M.Matrix Scalar
   }
+
+subMatrix :: Morphism -> SimpleObject -> M.Matrix Scalar
+subMatrix = subMatrix_
+
+funToMorphism :: Object -> Object -> (SimpleObject -> M.Matrix Scalar) -> Morphism
+funToMorphism o1 o2 f = Morphism o1 o2 f
 
 instance Show Morphism where
   show m = show $ map (subMatrix m) allSimpleObjects
-
   
 
 -- instance Num Morphism where
@@ -233,12 +254,8 @@ instance Show Morphism where
 
 scalarMorphism :: Object -> Scalar -> Morphism
 scalarMorphism o scalar =
-  Morphism
-  { domain = o
-  , codomain = o
-  , subMatrix = \so ->
-      M.diagonal 0 (V.replicate (multiplicity o so) scalar)      
-  }
+  funToMorphism o o $ \so -> 
+  M.diagonal 0 (V.replicate (multiplicity o so) scalar)
 
 
 idMorphism :: Object -> Morphism
@@ -259,23 +276,17 @@ emptyMatrix = M.matrix 0 0 undefined
 
 groupObject :: Object
 groupObject =
-  Object
-  { multiplicity = \so ->
+  funToObject $ \so ->
       case so of
         AE _ -> 1
         M    -> 0
-  }
 
 groupSum :: (AElement -> Scalar) -> Morphism
 groupSum f =  --M.diagonal 0 $ V.generate order (f . AElement)
-  Morphism
-  { domain = groupObject
-  , codomain = groupObject
-  , subMatrix = \so ->
+  funToMorphism groupObject groupObject $ \so ->
       case so of
         AE g -> M.fromLists [[f g]]
         M    -> emptyMatrix
-  }
 
 -- Turn a scalar function on A \times A into a matrix
 toMatrix :: (AElement -> AElement -> Scalar) -> M.Matrix Scalar
@@ -290,21 +301,15 @@ toMorphism :: (AElement -> AElement -> Scalar) -> Morphism
 toMorphism f = 
   let
     domain0 =
-      Object
-      { multiplicity = \so ->
+      funToObject $ \so ->
         case so of
           AE _ -> 0
           M    -> order
-      }
   in
-    Morphism
-    { domain = domain0
-    , codomain = domain0
-    , subMatrix = \so ->
+    funToMorphism domain0 domain0 $ \so ->
         case so of
           M ->  toMatrix f
           AE _ -> emptyMatrix
-    }
 
 directSum :: Num a => M.Matrix a -> M.Matrix a -> M.Matrix a
 directSum x y = 
@@ -324,7 +329,7 @@ starSO M =  M
 starSO (AE g) = AE (invert g)
 
 star :: Object -> Object
-star o = Object { multiplicity = (multiplicity o) . starSO }
+star o = funToObject $ (multiplicity o) . starSO 
 
 
 -- -- https://en.wikipedia.org/wiki/Kronecker_product
@@ -390,29 +395,24 @@ tensorHelper f so = map (uncurry f) $ tensorInv so
 
 
 tensorO :: Object -> Object -> Object
-tensorO o1 o2 = Object {
-    multiplicity =
+tensorO o1 o2 = funToObject $
      let jointMultiplicity a b
            = (multiplicity o1 a) * (multiplicity o2 b)
      in
        sum . tensorHelper jointMultiplicity
-  }
 
 
 -- Go through the direct sum of simple objects in the domain and range
 -- and check if each pair is (M,M)
 tensorM :: Morphism -> Morphism -> Morphism
 tensorM m1 m2 =
-  Morphism 
-  { domain = tensorO (domain m1) (domain m2)
-  , codomain = tensorO (codomain m1) (codomain m2)
-  , subMatrix = 
-      let kron so1 so2 = kronecker (subMatrix m1 so1) (subMatrix m2 so2)
-      in
-        foldl directSum emptyMatrix . (tensorHelper kron)
-  }
+  let kron so1 so2 = kronecker (subMatrix m1 so1) (subMatrix m2 so2)
+  in
+    funToMorphism (tensorO (domain m1) (domain m2))
+    (tensorO (codomain m1) (codomain m2))
+    (foldl directSum emptyMatrix . (tensorHelper kron))
 
--- FIXME
+
 linearize :: ([SimpleObject] -> M.Matrix Scalar) -> [Object] -> M.Matrix Scalar
 linearize f os =
   let
@@ -468,42 +468,42 @@ linearize3 f o1 o2 o3 =
 -- ------------------------------------------------------
 
 --
-initialLabel :: S.InitialEdge -> Object 
-initialLabel ie = -- toObject $ AE (AElement 0)
-  case ie of
-    S.LeftLoop -> toObject $ M
-    S.RightLoop -> toObject $ M --AE (AElement 1)
-    S.LeftLeg -> toObject $ M --AE (AElement 1)
-    S.RightLeg -> toObject $ M --AE (AElement 1)
-
-phi =
-  let
-    domain0 =  substO $ S.treeLabel $ S.initialEdgeTree $ S.IV S.Main
-  in
-    Morphism
-    { domain = domain0
-    , codomain = toObject one
-    , subMatrix = \so ->
-        if so == one
-        then M.fromLists
-             [[1]
-               ++ replicate (multiplicity domain0 one) 0
-             ]
-        else emptyMatrix
-    }
-
-
 -- initialLabel :: S.InitialEdge -> Object 
--- initialLabel ie = 
+-- initialLabel ie = -- toObject $ AE (AElement 0)
 --   case ie of
---     S.LeftLoop -> toObject $ AE (AElement 0)
---     S.RightLoop -> toObject $ AE (AElement 0)
---     S.LeftLeg -> toObject $ AE (AElement 0)
---     S.RightLeg -> toObject $ AE (AElement 0)
+--     S.LeftLoop -> toObject $ M
+--     S.RightLoop -> toObject $ M --AE (AElement 1)
+--     S.LeftLeg -> toObject $ M --AE (AElement 1)
+--     S.RightLeg -> toObject $ M --AE (AElement 1)
+
+-- phi =
+--   let
+--     domain0 =  substO $ S.treeLabel $ S.initialEdgeTree $ S.IV S.Main
+--   in
+--     Morphism
+--     { domain = domain0
+--     , codomain = toObject one
+--     , subMatrix = \so ->
+--         if so == one
+--         then M.fromLists
+--              [[1]
+--                ++ replicate (multiplicity domain0 one) 0
+--              ]
+--         else emptyMatrix
+--     }
 
 
--- phi =  idMorphism $ substO $ S.treeLabel
---   $ S.initialEdgeTree $ S.IV S.Main
+initialLabel :: S.InitialEdge -> Object 
+initialLabel ie = 
+  case ie of
+    S.LeftLoop -> toObject $ AE (AElement 0)
+    S.RightLoop -> toObject $ AE (AElement 0)
+    S.LeftLeg -> toObject $ AE (AElement 0)
+    S.RightLeg -> toObject $ AE (AElement 0)
+
+
+phi =  idMorphism $ substO $ S.treeLabel
+  $ S.initialEdgeTree $ S.IV S.Main
 
 
 
@@ -533,32 +533,24 @@ alphaSO M (AE a) M = groupSum (\b -> chi a b)
 alphaSO M M M =
   let
      domain0 =
-      Object
-      { multiplicity = \so ->
+      funToObject $  \so ->
         case so of
           AE _ -> 0
           M    -> order
-      }
   in
-    Morphism
-    { domain = domain0
-    , codomain = domain0
-    , subMatrix = \so ->
+    funToMorphism domain0 domain0 $ \so ->
         case so of
           M ->  toMatrix $ \x y -> tau * chiI x y
           AE _ -> emptyMatrix
-    }
 
 alpha :: Object -> Object -> Object -> Morphism
 alpha o1 o2 o3 =
-  Morphism
-  { domain = (o1 `tensorO` o2) `tensorO` o3
-  , codomain =   o1 `tensorO` (o2 `tensorO` o3)
-  , subMatrix = \so ->
+  funToMorphism ((o1 `tensorO` o2) `tensorO` o3)
+  (o1 `tensorO` (o2 `tensorO` o3))
+  $ \so ->
       linearize3 (\so1 so2 so3 ->
                     subMatrix (alphaSO so1 so2 so3) so)
       o1 o2 o3
-  }
 
 alphaISO :: SimpleObject -> SimpleObject -> SimpleObject -> Morphism
 alphaISO (AE g1) (AE g2) (AE g3) = idMorphism $ toObject $ AE $ g1 `mappend` g2 `mappend` g3
@@ -571,32 +563,27 @@ alphaISO M (AE a) M = groupSum (\b -> chiI a b)
 alphaISO M M M =
    let
      domain0 =
-      Object
-      { multiplicity = \so ->
+      funToObject $ \so ->
         case so of
           AE _ -> 0
           M    -> order
-      }
   in
-    Morphism
-    { domain = domain0
-    , codomain = domain0
-    , subMatrix = \so ->
+     funToMorphism domain0 domain0
+     $ \so ->
         case so of
           M ->    toMatrix $ \x y -> tauI * chi x y
           AE _ -> emptyMatrix
-    }
+    
 
 alphaI :: Object -> Object -> Object -> Morphism
 alphaI o1 o2 o3 =
-  Morphism
-  { domain = o1 `tensorO` (o2 `tensorO` o3)
-  , codomain =  (o1 `tensorO` o2) `tensorO` o3
-  , subMatrix = \so ->
+  funToMorphism
+   (o1 `tensorO` (o2 `tensorO` o3))
+   ((o1 `tensorO` o2) `tensorO` o3)
+   $ \so ->
        linearize3 (\so1 so2 so3 ->
                     subMatrix (alphaISO so1 so2 so3) so)
        o1 o2 o3
-  }
 
 
 -- coevSO :: SimpleObject -> Morphism
@@ -615,17 +602,16 @@ alphaI o1 o2 o3 =
 coev :: Object -> Morphism
 coev o =
   let codomain0 = (star o) `tensorO` o in        
-    Morphism
-    { domain = toObject one
-    , codomain = codomain0
-    , subMatrix = \so ->
+    funToMorphism
+    (toObject one)
+    (codomain0)
+    $ \so ->
         if so == one
         then M.fromLists $ [[1]] ++ 
                            replicate
                            ((multiplicity codomain0 one) - 1)
                            [0]
         else emptyMatrix
-    }
       
 
 -- ev :: SimpleObject -> Morphism
@@ -642,10 +628,8 @@ coev o =
 ev :: Object -> Morphism
 ev o =
   let domain0 = o `tensorO` (star o) in        
-    Morphism
-    { domain = domain0
-    , codomain = toObject one
-    , subMatrix = \so ->
+    funToMorphism domain0 (toObject one)
+    $ \so ->
         if so == one
         then M.fromLists $
         [[ --FIXME: the following is a hack
@@ -659,7 +643,7 @@ ev o =
             )
         ]
         else emptyMatrix
-    }
+    
 
 -- pivotalJSO :: SimpleObject -> Morphism
 -- pivotalJSO so = scalarMorphism so $
@@ -669,17 +653,13 @@ ev o =
 
 pivotalJ :: Object -> Morphism
 pivotalJ o =
-  Morphism
-  { domain = o
-  , codomain = o
-  , subMatrix = \so ->
+  funToMorphism o o $ \so ->
       M.diagonal 0
       (V.replicate (multiplicity o so) $
         case so of
           M -> nu
           AE _ -> 1
       )
-  }
       
 
 -- pivotalJISO :: SimpleObject -> Morphism
@@ -689,20 +669,20 @@ pivotalJI :: Object -> Morphism
 pivotalJI = pivotalJ
 
 -- standard (nondiagrammatic) order 
-compose :: Morphism -> Morphism -> Morphism
-compose m1 m2 =
-  if domain m1 == codomain m2
-  then 
-    Morphism
-    { domain = domain m2
-    , codomain = codomain m1
-    , subMatrix = \so ->
-        (subMatrix m1 so) * (subMatrix m2 so)
-    }
-  else error $ "Invalid composition: Codomain doesn't match domain. Codomain: "
-       ++ (show $ codomain m2) ++ ". Domain: " 
-       ++ (show $ domain m1)
-
+compose :: S.Morphism -> S.Morphism -> Morphism
+compose sm1 sm2 =
+  let
+    m1 = substM sm1
+    m2 = substM sm2
+  in
+    if domain m1 == codomain m2
+    then 
+      funToMorphism (domain m2) (codomain m1) $ \so ->
+          (subMatrix m1 so) * (subMatrix m2 so)
+    else error $ "Invalid composition: Codomain doesn't match domain. "
+         ++ (show sm2) ++ " has codomain: " ++ (show $ codomain m2) ++ ". "
+         ++ (show sm1) ++ " has domain: " ++ (show $ domain m1)
+  
     
 -- Substitute in the TY-specific morphisms
 substM :: S.Morphism -> Morphism
@@ -720,7 +700,7 @@ substM m = case m of
   S.Ev   o -> ev $ substO o
   S.PivotalJ  o -> pivotalJ $ substO o
   S.PivotalJI o -> pivotalJI $ substO o
-  S.Compose m1 m2 -> compose (substM m1) (substM m2)
+  S.Compose m1 m2 -> compose m1 m2
 
 
 -- -- Debugging strategies

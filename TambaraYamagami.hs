@@ -179,16 +179,16 @@ fromIndex i = if (0 <= i && i < order)
 allSimpleObjects = (map AE group) ++ [M]
 
 newtype Object = Object
-  { multiplicity_ :: SimpleObject -> Int
+  { multiplicity_ :: [Int]
   }
 
 multiplicity :: Object -> SimpleObject -> Int
-multiplicity = multiplicity_
+multiplicity o so = (multiplicity_ o) !! (toIndex so)
 
 
 -- Modularize constructor for testing different object implementations
 funToObject :: (SimpleObject -> Int) -> Object
-funToObject f = Object f
+funToObject f = Object $ map f allSimpleObjects
 
 
 instance Eq Object where
@@ -221,14 +221,14 @@ data Morphism = Morphism
   , codomain :: !Object
   
   -- the only morphisms between simple objects are identity morphisms
-  , subMatrix_ :: SimpleObject -> M.Matrix Scalar
+  , subMatrix_ :: ![M.Matrix Scalar]
   }
 
 subMatrix :: Morphism -> SimpleObject -> M.Matrix Scalar
-subMatrix = subMatrix_
+subMatrix m so = (subMatrix_ m) !! (toIndex so)
 
 funToMorphism :: Object -> Object -> (SimpleObject -> M.Matrix Scalar) -> Morphism
-funToMorphism o1 o2 f = Morphism o1 o2 f
+funToMorphism o1 o2 f = Morphism o1 o2 (map f allSimpleObjects)
 
 instance Show Morphism where
   show m = show $ map (subMatrix m) allSimpleObjects

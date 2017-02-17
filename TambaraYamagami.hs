@@ -467,43 +467,38 @@ linearize3 f o1 o2 o3 =
 -- --  Initial labels
 -- ------------------------------------------------------
 
---
--- initialLabel :: S.InitialEdge -> Object 
--- initialLabel ie = -- toObject $ AE (AElement 0)
---   case ie of
---     S.LeftLoop -> toObject $ M
---     S.RightLoop -> toObject $ M --AE (AElement 1)
---     S.LeftLeg -> toObject $ M --AE (AElement 1)
---     S.RightLeg -> toObject $ M --AE (AElement 1)
-
--- phi =
---   let
---     domain0 =  substO $ S.treeLabel $ S.initialEdgeTree $ S.IV S.Main
---   in
---     Morphism
---     { domain = domain0
---     , codomain = toObject one
---     , subMatrix = \so ->
---         if so == one
---         then M.fromLists
---              [[1]
---                ++ replicate (multiplicity domain0 one) 0
---              ]
---         else emptyMatrix
---     }
-
 
 initialLabel :: S.InitialEdge -> Object 
-initialLabel ie = 
+initialLabel ie = -- toObject $ AE (AElement 0)
   case ie of
-    S.LeftLoop -> toObject $ AE (AElement 0)
-    S.RightLoop -> toObject $ AE (AElement 0)
-    S.LeftLeg -> toObject $ AE (AElement 0)
-    S.RightLeg -> toObject $ AE (AElement 0)
+    S.LeftLoop -> toObject $ M
+    S.RightLoop -> toObject $ M --AE (AElement 1)
+    S.LeftLeg -> toObject $ M --AE (AElement 1)
+    S.RightLeg -> toObject $ M --AE (AElement 1)
+
+phi =
+  let
+    codomain0 =  substO $ S.treeLabel $ S.initialEdgeTree $ S.IV S.Main
+  in
+    funToMorphism (toObject one) codomain0  $ \so ->
+        if so == one
+        then M.fromLists $
+             [[1]]
+             ++ replicate ((multiplicity codomain0 one) - 1) [0]
+        else emptyMatrix
 
 
-phi =  idMorphism $ substO $ S.treeLabel
-  $ S.initialEdgeTree $ S.IV S.Main
+-- initialLabel :: S.InitialEdge -> Object 
+-- initialLabel ie = 
+--   case ie of
+--     S.LeftLoop -> toObject $ AE (AElement 0)
+--     S.RightLoop -> toObject $ AE (AElement 0)
+--     S.LeftLeg -> toObject $ AE (AElement 0)
+--     S.RightLeg -> toObject $ AE (AElement 0)
+
+
+-- phi =  idMorphism $ substO $ S.treeLabel
+--   $ S.initialEdgeTree $ S.IV S.Main
 
 
 
@@ -678,7 +673,17 @@ compose sm1 sm2 =
     if domain m1 == codomain m2
     then 
       funToMorphism (domain m2) (codomain m1) $ \so ->
-          (subMatrix m1 so) * (subMatrix m2 so)
+          let
+            mat1 = (subMatrix m1 so)
+            mat2 = (subMatrix m2 so)
+          in
+            if M.ncols mat1 == M.nrows mat2
+            then mat1 * mat2
+            else
+              error $ "Invalid composition: dimensions don't match at SimpleObject "
+              ++ (show so) ++ ". "
+              ++ (show sm1) ++ " has " ++ (show $ M.ncols mat1) ++ " columns. "
+              ++ (show sm2) ++ " has " ++ (show $ M.nrows mat2) ++ " rows. "
     else error $ "Invalid composition: Codomain doesn't match domain. "
          ++ (show sm2) ++ " has codomain: " ++ (show $ codomain m2) ++ ". "
          ++ (show sm1) ++ " has domain: " ++ (show $ domain m1)

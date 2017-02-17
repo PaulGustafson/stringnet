@@ -11,6 +11,9 @@
 -- Kenichi Shimizu. Frobenius-Schur indicators in Tambara-Yamagami
 -- categories.
 --
+-- TODO: Implement simple reductions for scalars,
+-- e.g. \sum_{i=0}^{p-1} \zeta^i = 0
+--
 -- TODO: Decide how to deal with coev's non-1 components
 --
 -- TODO: Write unit tests for important methods.
@@ -19,9 +22,7 @@
 --
 -- TODO: Dehackify ev method.
 --
--- TODO: Implement simple reductions for scalars,
--- e.g. \sum_{i=0}^{p-1} \zeta^i = 0
---
+
 
 
 
@@ -105,15 +106,22 @@ reduce xs =
   if length xs < order
   then xs ++ replicate (order - length xs) 0
   else zipWith (+) (take order xs) (reduce $ drop order xs)
-                                          
+
+isZero :: Scalar -> Bool
+isZero s = and $ map (== 0) $ coeff s
+       
 instance Num Scalar where
-  s1 + s2 = 
-    if tauExp s1 == tauExp s2
-    then Scalar {
-      coeff = zipWith (+) (coeff s1) (coeff s2)
-      , tauExp = tauExp s1
-      }
-    else error "Can't add; tauExponents don't match."
+  s1 + s2 = case () of
+    _ | (tauExp s1 == tauExp s2) ->
+        Scalar
+        { coeff = zipWith (+) (coeff s1) (coeff s2)
+        , tauExp = tauExp s1
+        }
+      | isZero s1 -> s2
+      | isZero s2 -> s1
+      | otherwise ->  error $
+        "Can't add; tauExponents don't match for " 
+         ++ (show  s1) ++ " and " ++ (show s2)
   s1 * s2 =  Scalar {
     coeff = reduce $ convolve (coeff s1) (coeff s2)
     , tauExp = (tauExp s1) + (tauExp s2)

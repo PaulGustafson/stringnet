@@ -614,7 +614,12 @@ contractHelper contractedEdge  = state $ \tc ->
 
 
                 , morphismLabel = (\v -> if (v == composition) 
-                                         then  Compose (Ev $ objectLabel contractedEdge)
+                                         then  Compose ((Id $ treeLabel (leftSubTree $ edgeTree tc $ IV v0))
+                                                       `TensorM`
+                                                         (Ev $ objectLabel contractedEdge)
+                                                         `TensorM`
+                                                        (Id $ treeLabel (rightSubTree $ edgeTree tc $ IV v1))
+                                                       )
                                                (TensorM (morphismLabel tc v0)
                                                 (morphismLabel tc v1))
                                          else morphismLabel tc v )

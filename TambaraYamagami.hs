@@ -11,7 +11,7 @@
 -- Kenichi Shimizu. Frobenius-Schur indicators in Tambara-Yamagami
 -- categories.
 --
--- TODO: Separate constructors and destructors
+-- TODO: Decide how to deal with coev's non-1 components
 --
 -- TODO: Write unit tests for important methods.
 --
@@ -566,7 +566,7 @@ alphaISO M M M =
      funToMorphism domain0 domain0
      $ \so ->
         case so of
-          M ->    toMatrix $ \x y -> tauI * chi x y
+          M    -> toMatrix $ \x y -> tauI * chi x y
           AE _ -> emptyMatrix
     
 
@@ -602,12 +602,8 @@ coev o =
     (codomain0)
     $ \so ->
         if so == one
-        then M.fromLists $ [[1]] ++ 
-                           replicate
-                           ((multiplicity codomain0 one) - 1)
-                           [0]
-        else emptyMatrix
-      
+        then M.fromLists [[1]] 
+        else emptyMatrix      
 
 -- ev :: SimpleObject -> Morphism
 -- ev M =  Morphism
@@ -627,19 +623,16 @@ ev o =
     $ \so ->
         if so == one
         then M.fromLists $
-        [[ --FIXME: the following is a hack
+        [[ --FIXME: the following is wrong.  Need to solve
+            -- squiggle equation
             if multiplicity o M > 0
             then tauI
             else 1
          ]
-         ++ (replicate
-             ((multiplicity domain0 one) - 1)
-             0
-            )
         ]
         else emptyMatrix
+     
     
-
 -- pivotalJSO :: SimpleObject -> Morphism
 -- pivotalJSO so = scalarMorphism so $
 --   case so of
@@ -676,16 +669,23 @@ compose sm1 sm2 =
           let
             mat1 = (subMatrix m1 so)
             mat2 = (subMatrix m2 so)
+            minDim = min (M.ncols mat1) (M.nrows mat2)
           in
-            if M.ncols mat1 == M.nrows mat2
-            then mat1 * mat2
-            else
-              error $ "Invalid composition: dimensions don't match at SimpleObject "
-              ++ (show so) ++ ". "
-              ++ (show sm1) ++ " has " ++ (show $ M.ncols mat1) ++ " columns. "
-              ++ (show sm2) ++ " has " ++ (show $ M.nrows mat2) ++ " rows. "
+            if minDim == 0
+            then emptyMatrix
+            else (M.submatrix 1 (M.nrows mat1) 1 minDim mat1)
+                 * (M.submatrix 1 minDim 1 (M.ncols mat2) mat2)
+            -- else 
+            --   error $ "Invalid composition: "
+            --   ++ "dimensions don't match at SimpleObject "
+            --   ++ (show so) ++ ". "
+            --   ++ (show sm1) ++ " has " ++ (show $ M.ncols mat1)
+            --   ++ " columns. "
+            --   ++ (show sm2) ++ " has " ++ (show $ M.nrows mat2)
+            --   ++ " rows. "
     else error $ "Invalid composition: Codomain doesn't match domain. "
-         ++ (show sm2) ++ " has codomain: " ++ (show $ codomain m2) ++ ". "
+         ++ (show sm2) ++ " has codomain: "
+         ++ (show $ codomain m2) ++ ". "
          ++ (show sm1) ++ " has domain: " ++ (show $ domain m1)
   
     

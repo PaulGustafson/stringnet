@@ -649,8 +649,9 @@ ev o =
     $ \so ->
         if so == one
         then M.fromLists $
-        [[  if multiplicity o M > 0
-            then (fromInteger $ fromIntegral $ multiplicity o M) * tauI
+        [[  -- TODO: double check this
+            if multiplicity o M > 0
+            then tauI
             else 1
          ]
         ]

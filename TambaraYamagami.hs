@@ -11,15 +11,16 @@
 -- Kenichi Shimizu. Frobenius-Schur indicators in Tambara-Yamagami
 -- categories.
 --
--- TODO: Implement 
+-- TODO: Dehackify ev method.
 --
--- TODO: Decide how to deal with coev's non-1 components
+-- TODO: Actually calculate the $R$ matrix wrt to basis of simple
+-- objects.  Probably can use sum instead of direct sum.
+--
 --
 -- TODO: Write unit tests for important methods.
 --
 -- TODO: Write Num instances.
 --
--- TODO: Dehackify ev method.
 --
 
 

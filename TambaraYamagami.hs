@@ -11,8 +11,7 @@
 -- Kenichi Shimizu. Frobenius-Schur indicators in Tambara-Yamagami
 -- categories.
 --
--- TODO: Implement simple reductions for scalars,
--- e.g. \sum_{i=0}^{p-1} \zeta^i = 0
+-- TODO: Implement 
 --
 -- TODO: Decide how to deal with coev's non-1 components
 --
@@ -100,6 +99,24 @@ convolve hs xs =
       ts  = pad ++ xs
   in map (sum . zipWith (*) (reverse hs)) (init $ L.tails ts)
 
+-- Simple reductions for scalars, \sum_{i=0}^{p-1} \zeta^i = 0
+normalize :: Scalar -> Scalar
+normalize s = normalize2 $ Scalar
+  { coeff = map (\x -> x - minimum (coeff s)) (coeff s)
+  , tauExp = tauExp s
+  }
+
+normalize2 :: Scalar -> Scalar
+normalize2 s =
+  if (and $ map (== 0) $ map (`mod` order) (coeff s))
+     && ((coeff s) !! 0) > 0
+  then normalize2 $ Scalar
+       { coeff = map (`div` order) $ coeff s
+       , tauExp = (tauExp s) - 1
+       }
+  else s
+  
+
 -- Use the fact that \zeta^n = 1
 reduce :: [Int] -> [Int]
 reduce xs =
@@ -111,7 +128,7 @@ isZero :: Scalar -> Bool
 isZero s = and $ map (== 0) $ coeff s
        
 instance Num Scalar where
-  s1 + s2 = case () of
+  s1 + s2 = normalize $ case () of
     _ | (tauExp s1 == tauExp s2) ->
         Scalar
         { coeff = zipWith (+) (coeff s1) (coeff s2)
@@ -122,11 +139,11 @@ instance Num Scalar where
       | otherwise ->  error $
         "Can't add; tauExponents don't match for " 
          ++ (show  s1) ++ " and " ++ (show s2)
-  s1 * s2 =  Scalar {
+  s1 * s2 = normalize $  Scalar {
     coeff = reduce $ convolve (coeff s1) (coeff s2)
     , tauExp = (tauExp s1) + (tauExp s2)
     }
-  fromInteger x = Scalar {
+  fromInteger x = normalize $ Scalar {
     coeff = [fromIntegral x] ++ (replicate (order - 1) 0)
     , tauExp = 0
     }

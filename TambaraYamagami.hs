@@ -11,11 +11,12 @@
 -- Kenichi Shimizu. Frobenius-Schur indicators in Tambara-Yamagami
 -- categories.
 --
--- TODO: Dehackify ev method.
---
 -- TODO: Actually calculate the $R$ matrix wrt to basis of simple
--- objects.  Probably can use sum instead of direct sum.
+-- objects.
 --
+-- TODO: Use sums instead of direct sum at appropriate times
+--
+-- TODO: Dehackify ev method.
 --
 -- TODO: Write unit tests for important methods.
 --
@@ -100,20 +101,32 @@ convolve hs xs =
       ts  = pad ++ xs
   in map (sum . zipWith (*) (reverse hs)) (init $ L.tails ts)
 
--- Simple reductions for scalars, \sum_{i=0}^{p-1} \zeta^i = 0
+-- Reduce \sum_{i=0}^{p-1} \zeta^i = 0
 normalize :: Scalar -> Scalar
-normalize s = normalize2 $ Scalar
+normalize s = normalize3 $ normalize2 $ Scalar
   { coeff = map (\x -> x - minimum (coeff s)) (coeff s)
   , tauExp = tauExp s
   }
+
 
 normalize2 :: Scalar -> Scalar
 normalize2 s =
   if (and $ map (== 0) $ map (`mod` order) (coeff s))
      && ((coeff s) !! 0) > 0
+     && tauExp s > 0
   then normalize2 $ Scalar
        { coeff = map (`div` order) $ coeff s
-       , tauExp = (tauExp s) - 1
+       , tauExp = (tauExp s) - 2
+       }
+  else s
+
+normalize3 :: Scalar -> Scalar
+normalize3 s =
+  if tauExp s < 0
+     && (getSum $ tauExp s) `mod` 2 == 0
+  then normalize3 $ Scalar
+       { coeff = map (* order) $ coeff s
+       , tauExp = (tauExp s) + 2
        }
   else s
   
@@ -484,34 +497,22 @@ linearize3 f o1 o2 o3 =
 
 
 
--- -- validInitialLabels :: S.InitialEdge -> [SimpleObject]
--- -- validInitialLabels ie = [M, AE $ AEVar ie]
-
-
-
 -- ------------------------------------------------------
 -- --  Initial labels
 -- ------------------------------------------------------
 
-
-initialLabel :: S.InitialEdge -> Object 
-initialLabel ie = -- toObject $ AE (AElement 0)
-  case ie of
-    S.LeftLoop -> toObject $ M
-    S.RightLoop -> toObject $ M --AE (AElement 1)
-    S.LeftLeg -> toObject $ M --AE (AElement 1)
-    S.RightLeg -> toObject $ M --AE (AElement 1)
-
-phi =
-  let
-    codomain0 =  substO $ S.treeLabel $ S.initialEdgeTree $ S.IV S.Main
-  in
-    funToMorphism (toObject one) codomain0  $ \so ->
-        if so == one
-        then M.fromLists $
-             [[1]]
-             ++ replicate ((multiplicity codomain0 one) - 1) [0]
-        else emptyMatrix
+-- morphisms spanning 1 -> Object
+morphismSet :: Object -> [Morphism]
+morphismSet codomain0 =
+  if multiplicity codomain0 one > 0
+  then [funToMorphism (toObject one) codomain0  $ \so ->
+           if so == one
+           then M.fromLists $
+                [[1]]
+                ++ replicate ((multiplicity codomain0 one) - 1) [0]
+           else emptyMatrix
+       ]
+  else []
 
 
 -- initialLabel :: S.InitialEdge -> Object 
@@ -534,12 +535,12 @@ phi =
 
       
 -- Substitute in the TY-specific objects.
-substO :: S.Object -> Object
-substO o0 =  case o0 of
-  S.OVar ie -> initialLabel ie
+substO :: (S.InitialEdge -> SimpleObject) -> S.Object -> Object
+substO il o0 =  case o0 of
+  S.OVar ie -> toObject $ il ie
   S.One -> toObject $ AE (AElement 0)
-  S.Star o -> star $ substO o
-  S.TensorO o1 o2 -> (substO o1) `tensorO` (substO o2)
+  S.Star o -> star $ substO il o
+  S.TensorO o1 o2 -> (substO il o1) `tensorO` (substO il o2)
 
     
 
@@ -649,8 +650,7 @@ ev o =
     $ \so ->
         if so == one
         then M.fromLists $
-        [[ --FIXME: the following is wrong.  Need to solve
-            -- squiggle equation
+        [[  -- TODO: double check this
             if multiplicity o M > 0
             then tauI
             else 1
@@ -683,11 +683,11 @@ pivotalJI :: Object -> Morphism
 pivotalJI = pivotalJ
 
 -- standard (nondiagrammatic) order 
-compose :: S.Morphism -> S.Morphism -> Morphism
-compose sm1 sm2 =
+compose :: (S.InitialEdge -> SimpleObject) -> Morphism -> S.Morphism -> S.Morphism -> Morphism
+compose il phi sm1 sm2 =
   let
-    m1 = substM sm1
-    m2 = substM sm2
+    m1 = substM il phi sm1
+    m2 = substM il phi sm2
   in
     if domain m1 == codomain m2
     then 
@@ -716,22 +716,50 @@ compose sm1 sm2 =
   
     
 -- Substitute in the TY-specific morphisms
-substM :: S.Morphism -> Morphism
-substM m = case m of
+substM :: (S.InitialEdge -> SimpleObject) -> Morphism -> S.Morphism -> Morphism
+substM il phi m = case m of
   S.Phi -> phi
-  S.Id o -> idMorphism $ substO o
-  S.Lambda o -> idMorphism $ substO o
-  S.LambdaI o -> idMorphism $ substO o
-  S.Rho o -> idMorphism $ substO o
-  S.RhoI o -> idMorphism $ substO o
-  S.TensorM m1 m2 -> (substM m1) `tensorM` (substM m2)
-  S.Alpha o1 o2 o3 -> alpha (substO o1) (substO o2) (substO o3)
-  S.AlphaI o1 o2 o3 -> alphaI (substO o1) (substO o2) (substO o3)
-  S.Coev o -> coev $ substO o
-  S.Ev   o -> ev $ substO o
-  S.PivotalJ  o -> pivotalJ $ substO o
-  S.PivotalJI o -> pivotalJI $ substO o
-  S.Compose m1 m2 -> compose m1 m2
+  S.Id o -> idMorphism $ substO il o
+  S.Lambda o -> idMorphism $ substO il o
+  S.LambdaI o -> idMorphism $ substO il o
+  S.Rho o -> idMorphism $ substO il o
+  S.RhoI o -> idMorphism $ substO il o
+  S.TensorM m1 m2 -> (substM il phi m1) `tensorM` (substM il phi m2)
+  S.Alpha o1 o2 o3 -> alpha (substO il o1) (substO il o2) (substO il o3)
+  S.AlphaI o1 o2 o3 -> alphaI (substO il o1) (substO il o2) (substO il o3)
+  S.Coev o -> coev $ substO il o
+  S.Ev   o -> ev $ substO il o
+  S.PivotalJ  o -> pivotalJ $ substO il o
+  S.PivotalJI o -> pivotalJI $ substO il o
+  S.Compose m1 m2 -> compose il phi m1 m2
+
+allInitialEdges :: [S.InitialEdge]
+allInitialEdges = [S.LeftLoop, S.RightLoop, S.LeftLeg, S.RightLeg]
+
+numInitialEdges :: Int
+numInitialEdges = length allInitialEdges
+
+allInitialLabels :: [S.InitialEdge -> SimpleObject]
+allInitialLabels = map (\x y -> x !! (fromEnum y))
+  (replicateM (length allInitialEdges) allSimpleObjects) 
+
+toCodomain :: (S.InitialEdge -> SimpleObject) -> Object
+toCodomain il = foldl (tensorO) (toObject one) $
+  map (toObject . il) allInitialEdges
+
+answer =
+  map (uncurry $ \initialLabel0 initialMorphism ->
+         map sum $ map M.toList $ subMatrix_ $
+        substM initialLabel0 initialMorphism S.finalMorphism
+      ) $
+  concat $
+  map (uncurry $ \il ms -> [(il, m) |  m <- ms])
+  [(il, morphismSet $ toCodomain il) | il <- allInitialLabels]
+  
+
+  
+  
+  
 
 
 -- -- Debugging strategies
@@ -742,3 +770,5 @@ substM m = case m of
 -- -- (Direct sum stuff).  In particular, add conceptual types to wrap
 -- -- around the computational types (i.e. SimpleObject functions to wrap
 -- -- around the matrices)
+
+

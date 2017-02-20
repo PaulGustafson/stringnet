@@ -47,7 +47,7 @@ data Vertex = Punc Puncture | IV InteriorVertex
 
 --initial edges
 data InitialEdge = LeftLoop | RightLoop | LeftLeg | RightLeg
-  deriving (Show, Eq)
+  deriving (Show, Eq, Enum)
 
 
 -- Orientations of initial edges are given by arrows in the figures in

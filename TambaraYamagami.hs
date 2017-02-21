@@ -12,7 +12,7 @@
 -- categories.
 --
 -- TODO: Actually calculate the $R$ matrix wrt to basis of simple
--- objects.
+-- objects.  
 --
 -- TODO: Use sums instead of direct sum at appropriate times
 --
@@ -38,7 +38,8 @@ import qualified Stringnet          as S
 import Data.Group
 import Control.Monad as CM
 
-order = 2
+-- order of abelian group A
+order = 1
 
 -- \pm 1
 nu = 1
@@ -104,7 +105,9 @@ convolve hs xs =
 -- Reduce \sum_{i=0}^{p-1} \zeta^i = 0
 normalize :: Scalar -> Scalar
 normalize s = normalize3 $ normalize2 $ Scalar
-  { coeff = map (\x -> x - minimum (coeff s)) (coeff s)
+  { coeff = if order /= 1
+            then map (\x -> x - minimum (coeff s)) (coeff s)
+            else coeff s
   , tauExp = tauExp s
   }
 
@@ -502,16 +505,20 @@ linearize3 f o1 o2 o3 =
 -- ------------------------------------------------------
 
 -- morphisms spanning 1 -> Object
-morphismSet :: Object -> [Morphism]
+morphismSet :: Object -> [(Morphism, Int)]
 morphismSet codomain0 =
   if multiplicity codomain0 one > 0
-  then [funToMorphism (toObject one) codomain0  $ \so ->
+  then [(funToMorphism (toObject one) codomain0  $ \so ->
            if so == one
            then M.fromLists $
-                [[1]]
-                ++ replicate ((multiplicity codomain0 one) - 1) [0]
+                (replicate n [0])
+                ++ [[1]]
+                ++ (replicate
+                    ((multiplicity codomain0 one) - 1 - n) [0])
            else emptyMatrix
-       ]
+        , n
+        )
+       | n <- [0..(multiplicity codomain0 one)]]
   else []
 
 
@@ -744,20 +751,39 @@ allInitialLabels = map (\x y -> x !! (fromEnum y))
   (replicateM (length allInitialEdges) allSimpleObjects) 
 
 toCodomain :: (S.InitialEdge -> SimpleObject) -> Object
-toCodomain il = foldl (tensorO) (toObject one) $
-  map (toObject . il) allInitialEdges
+toCodomain il =
+  substO il $ S.treeLabel $ S.initialEdgeTree $ S.IV S.Main
+
+-- TODO: Get rid of redundant morphism
+type BasisElement = (S.InitialEdge -> SimpleObject, (Morphism, Int))
+
+basis :: [BasisElement]
+basis =  concat $ map (uncurry $ \il ms -> [(il, m)
+                                           |  m <- ms])
+  [(il, morphismSet $ toCodomain il) | il <- allInitialLabels]
+
 
 answer =
   map (uncurry $ \initialLabel0 initialMorphism ->
-         map sum $ map M.toList $ subMatrix_ $
-        substM initialLabel0 initialMorphism S.finalMorphism
-      ) $
-  concat $
-  map (uncurry $ \il ms -> [(il, m) |  m <- ms])
-  [(il, morphismSet $ toCodomain il) | il <- allInitialLabels]
-  
+          -- map sum $ map M.toList $ subMatrix_ $
+          substM initialLabel0 (fst initialMorphism) S.finalMorphism
+      ) basis
 
-  
+
+class Finite a where
+  allElements :: [a]
+
+instance (Finite a, Show b) => Show (a -> b) where
+  show f = show $ toList f
+
+toList :: Finite a => (a -> b) -> [b]
+toList f = map f allElements
+
+instance Finite S.InitialEdge where
+  allElements = allInitialEdges
+
+-- TODO: Write this
+-- rMatrixCoeff :: Morphism -> BasisElement -> Scalar
   
   
 

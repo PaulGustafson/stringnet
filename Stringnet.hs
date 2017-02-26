@@ -83,6 +83,9 @@ data Disk =
 data Tree a = Leaf a | Node (Tree a) (Tree a)
             deriving (Eq, Show)
 
+instance Functor Tree where
+  fmap f (Leaf l) = Leaf $ f l
+  fmap f (Node a b) = Node (fmap f a) (fmap f b)
 
 data Stringnet = Stringnet
                   { vertices      :: ![InteriorVertex]
@@ -783,7 +786,9 @@ braid = do
   -- TODO: make a method to turn a tree into a specified shape
   --
   -- Current Edgetree:
-  
+  --
+  -- 
+  --
   -- +
   -- |
   -- +- +
@@ -821,27 +826,38 @@ braid = do
   return ()
 
 
-finalTC :: Stringnet
-finalTC = execState braid initialTC
+newInitialEdge :: InitialEdge -> Edge
+newInitialEdge ie =
+  case ie of
+    RightLeg -> SecondHalf (IE LeftLeg)
+    RightLoop ->  FirstHalf (SecondHalf (IE LeftLoop))
+    LeftLeg ->  IE RightLeg
+    LeftLoop -> Reverse (TensorE (TensorE (TensorE (Reverse (FirstHalf (IE LeftLoop))) (Reverse (FirstHalf (IE LeftLeg)))) (SecondHalf (SecondHalf (IE LeftLoop)))) (Reverse (FirstHalf (IE RightLoop))))
+
+finalSN :: Stringnet
+finalSN = execState braid initialTC
 
 finalVertex :: InteriorVertex
-finalVertex = vertices finalTC !! 0
+finalVertex = vertices finalSN !! 0
 
 finalMorphism :: Morphism
-finalMorphism = morphismLabel finalTC finalVertex
+finalMorphism = morphismLabel finalSN finalVertex
+
+finalEdgeTree :: Tree Edge
+finalEdgeTree = edgeTree finalSN $ IV finalVertex
 
 
 -- testDisk = evalState braid initialTC
--- testPerim = perimeter finalTC testDisk
+-- testPerim = perimeter finalSN testDisk
 -- testE1 = testPerim !! 0
 -- testE2 = rev (testPerim !! 1)
--- testV0 = toIV $ (endpoints testE1 finalTC) !! 0
--- testV1 = toIV $ (endpoints testE1 finalTC) !! 1
+-- testV0 = toIV $ (endpoints testE1 finalSN) !! 0
+-- testV1 = toIV $ (endpoints testE1 finalSN) !! 1
 
 -- testIndex tc e v = elemIndex e $ flatten $ edgeTree tc $ IV v
 
--- ti1 = testIndex finalTC testE1 testV0
--- ti2 = testIndex finalTC testE2 testV0
+-- ti1 = testIndex finalSN testE1 testV0
+-- ti2 = testIndex finalSN testE2 testV0
 
 -- TESTS
 

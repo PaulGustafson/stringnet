@@ -44,8 +44,7 @@ order = 1
 -- \pm 1
 nu = 1
 
--- group element, assuming cyclicity
--- dependent types would be nice here
+-- Group element, assuming cyclicity
 newtype AElement = AElement Int deriving (Show)
 
 instance Eq AElement where
@@ -58,10 +57,11 @@ instance Monoid AElement where
 instance Group AElement where
   invert (AElement e) = AElement  $ (-e) `mod` order
 
--- carrier set for the group
+-- Carrier set for the group
 group :: [AElement]
 group = Prelude.map AElement [0..(order - 1)]
 
+-- Nicer synonym for the group operation
 plus :: AElement -> AElement -> AElement
 plus = mappend
 
@@ -91,10 +91,6 @@ tauI =
   }
 
 
--- http://mathworld.wolfram.com/GroupConvolution.html
--- convolve :: Num c =>  (RootOfUnity -> c) -> (RootOfUnity -> c) -> (RootOfUnity -> c)
--- convolve a b = \g -> sum $ map (\k -> (a k)*(b $ (invert k) `mappend` g)) $ map RootOfUnity group
-
 -- Source: https://www.blaenkdenum.com/posts/naive-convolution-in-haskell/
 convolve :: (Num a) => [a] -> [a] -> [a]
 convolve hs xs =
@@ -111,7 +107,7 @@ normalize s = normalize3 $ normalize2 $ Scalar
   , tauExp = tauExp s
   }
 
-
+-- Reduction of positive tauExponents
 normalize2 :: Scalar -> Scalar
 normalize2 s =
   if (and $ map (== 0) $ map (`mod` order) (coeff s))
@@ -123,6 +119,7 @@ normalize2 s =
        }
   else s
 
+-- Reduction of negative tauExponents
 normalize3 :: Scalar -> Scalar
 normalize3 s =
   if tauExp s < 0
@@ -134,7 +131,7 @@ normalize3 s =
   else s
   
 
--- Use the fact that \zeta^n = 1
+-- Use the fact that \zeta^n = 1 to reduce after convolution
 reduce :: [Int] -> [Int]
 reduce xs =
   if length xs < order
@@ -229,8 +226,8 @@ multiplicity o so = (multiplicity_ o) !! (toIndex so)
 
 
 -- Modularize constructor for testing different object implementations
-funToObject :: (SimpleObject -> Int) -> Object
-funToObject f = Object $ map f allSimpleObjects
+object :: (SimpleObject -> Int) -> Object
+object f = Object $ map f allSimpleObjects
 
 
 instance Eq Object where
@@ -251,7 +248,7 @@ instance Show Object where
 --   abs _ = undefined
 
 toObject :: SimpleObject -> Object
-toObject x = funToObject $ \y ->
+toObject x = object $ \y ->
                   if x == y
                   then 1
                   else 0
@@ -269,8 +266,8 @@ data Morphism = Morphism
 subMatrix :: Morphism -> SimpleObject -> M.Matrix Scalar
 subMatrix m so = (subMatrix_ m) !! (toIndex so)
 
-funToMorphism :: Object -> Object -> (SimpleObject -> M.Matrix Scalar) -> Morphism
-funToMorphism o1 o2 f = Morphism o1 o2 (map f allSimpleObjects)
+morphism :: Object -> Object -> (SimpleObject -> M.Matrix Scalar) -> Morphism
+morphism o1 o2 f = Morphism o1 o2 (map f allSimpleObjects)
 
 instance Show Morphism where
   show m = show $ map (subMatrix m) allSimpleObjects
@@ -296,7 +293,7 @@ instance Show Morphism where
 
 scalarMorphism :: Object -> Scalar -> Morphism
 scalarMorphism o scalar =
-  funToMorphism o o $ \so -> 
+  morphism o o $ \so -> 
   M.diagonal 0 (V.replicate (multiplicity o so) scalar)
 
 
@@ -318,14 +315,14 @@ emptyMatrix = M.matrix 0 0 undefined
 
 groupObject :: Object
 groupObject =
-  funToObject $ \so ->
+  object $ \so ->
       case so of
         AE _ -> 1
         M    -> 0
 
 groupSum :: (AElement -> Scalar) -> Morphism
 groupSum f =  --M.diagonal 0 $ V.generate order (f . AElement)
-  funToMorphism groupObject groupObject $ \so ->
+  morphism groupObject groupObject $ \so ->
       case so of
         AE g -> M.fromLists [[f g]]
         M    -> emptyMatrix
@@ -343,12 +340,12 @@ toMorphism :: (AElement -> AElement -> Scalar) -> Morphism
 toMorphism f = 
   let
     domain0 =
-      funToObject $ \so ->
+      object $ \so ->
         case so of
           AE _ -> 0
           M    -> order
   in
-    funToMorphism domain0 domain0 $ \so ->
+    morphism domain0 domain0 $ \so ->
         case so of
           M ->  toMatrix f
           AE _ -> emptyMatrix
@@ -371,7 +368,7 @@ starSO M =  M
 starSO (AE g) = AE (invert g)
 
 star :: Object -> Object
-star o = funToObject $ (multiplicity o) . starSO 
+star o = object $ (multiplicity o) . starSO 
 
 
 -- -- https://en.wikipedia.org/wiki/Kronecker_product
@@ -437,7 +434,7 @@ tensorHelper f so = map (uncurry f) $ tensorInv so
 
 
 tensorO :: Object -> Object -> Object
-tensorO o1 o2 = funToObject $
+tensorO o1 o2 = object $
      let jointMultiplicity a b
            = (multiplicity o1 a) * (multiplicity o2 b)
      in
@@ -450,7 +447,7 @@ tensorM :: Morphism -> Morphism -> Morphism
 tensorM m1 m2 =
   let kron so1 so2 = kronecker (subMatrix m1 so1) (subMatrix m2 so2)
   in
-    funToMorphism (tensorO (domain m1) (domain m2))
+    morphism (tensorO (domain m1) (domain m2))
     (tensorO (codomain m1) (codomain m2))
     (foldl directSum emptyMatrix . (tensorHelper kron))
 
@@ -500,47 +497,11 @@ linearize3 f o1 o2 o3 =
 
 
 
--- ------------------------------------------------------
--- --  Initial labels
--- ------------------------------------------------------
-
--- morphisms spanning 1 -> Object
-morphismSet :: Object -> [(Morphism, Int)]
-morphismSet codomain0 =
-  if multiplicity codomain0 one > 0
-  then [(funToMorphism (toObject one) codomain0  $ \so ->
-           if so == one
-           then M.fromLists $
-                (replicate n [0])
-                ++ [[1]]
-                ++ (replicate
-                    ((multiplicity codomain0 one) - 1 - n) [0])
-           else emptyMatrix
-        , n
-        )
-       | n <- [0..(multiplicity codomain0 one)]]
-  else []
-
-
--- initialLabel :: S.InitialEdge -> Object 
--- initialLabel ie = 
---   case ie of
---     S.LeftLoop -> toObject $ AE (AElement 0)
---     S.RightLoop -> toObject $ AE (AElement 0)
---     S.LeftLeg -> toObject $ AE (AElement 0)
---     S.RightLeg -> toObject $ AE (AElement 0)
-
-
--- phi =  idMorphism $ substO $ S.treeLabel
---   $ S.initialEdgeTree $ S.IV S.Main
-
-
 
 -- ------------------------------------------------------
 -- --  Substituting TY labels for arbitrary ones
 -- ------------------------------------------------------
-
-      
+     
 -- Substitute in the TY-specific objects.
 substO :: (S.InitialEdge -> SimpleObject) -> S.Object -> Object
 substO il o0 =  case o0 of
@@ -562,19 +523,19 @@ alphaSO M (AE a) M = groupSum (\b -> chi a b)
 alphaSO M M M =
   let
      domain0 =
-      funToObject $  \so ->
+      object $  \so ->
         case so of
           AE _ -> 0
           M    -> order
   in
-    funToMorphism domain0 domain0 $ \so ->
+    morphism domain0 domain0 $ \so ->
         case so of
           M ->  toMatrix $ \x y -> tau * chiI x y
           AE _ -> emptyMatrix
 
 alpha :: Object -> Object -> Object -> Morphism
 alpha o1 o2 o3 =
-  funToMorphism ((o1 `tensorO` o2) `tensorO` o3)
+  morphism ((o1 `tensorO` o2) `tensorO` o3)
   (o1 `tensorO` (o2 `tensorO` o3))
   $ \so ->
       linearize3 (\so1 so2 so3 ->
@@ -592,12 +553,12 @@ alphaISO M (AE a) M = groupSum (\b -> chiI a b)
 alphaISO M M M =
    let
      domain0 =
-      funToObject $ \so ->
+      object $ \so ->
         case so of
           AE _ -> 0
           M    -> order
   in
-     funToMorphism domain0 domain0
+     morphism domain0 domain0
      $ \so ->
         case so of
           M    -> toMatrix $ \x y -> tauI * chi x y
@@ -606,7 +567,7 @@ alphaISO M M M =
 
 alphaI :: Object -> Object -> Object -> Morphism
 alphaI o1 o2 o3 =
-  funToMorphism
+  morphism
    (o1 `tensorO` (o2 `tensorO` o3))
    ((o1 `tensorO` o2) `tensorO` o3)
    $ \so ->
@@ -631,7 +592,7 @@ alphaI o1 o2 o3 =
 coev :: Object -> Morphism
 coev o =
   let codomain0 = (star o) `tensorO` o in        
-    funToMorphism
+    morphism
     (toObject one)
     (codomain0)
     $ \so ->
@@ -653,7 +614,7 @@ coev o =
 ev :: Object -> Morphism
 ev o =
   let domain0 = o `tensorO` (star o) in        
-    funToMorphism domain0 (toObject one)
+    morphism domain0 (toObject one)
     $ \so ->
         if so == one
         then M.fromLists $
@@ -674,7 +635,7 @@ ev o =
 
 pivotalJ :: Object -> Morphism
 pivotalJ o =
-  funToMorphism o o $ \so ->
+  morphism o o $ \so ->
       M.diagonal 0
       (V.replicate (multiplicity o so) $
         case so of
@@ -698,7 +659,7 @@ compose il phi sm1 sm2 =
   in
     if domain m1 == codomain m2
     then 
-      funToMorphism (domain m2) (codomain m1) $ \so ->
+      morphism (domain m2) (codomain m1) $ \so ->
           let
             mat1 = (subMatrix m1 so)
             mat2 = (subMatrix m2 so)
@@ -757,17 +718,93 @@ toCodomain il =
 -- TODO: Get rid of redundant morphism
 type BasisElement = (S.InitialEdge -> SimpleObject, (Morphism, Int))
 
+-- data B_asisElement = B_asisElement
+--   { initialLabel :: S.InitialEdge -> SimpleObject
+--   , oneIndex :: Int
+--   }
+
+-- ------------------------------------------------------
+-- --  Initial labels
+-- ------------------------------------------------------
+
+-- morphisms spanning 1 -> Object
+morphismSet :: Object -> [(Morphism, Int)]
+morphismSet codomain0 =
+  map (\i -> (oneIndexToMorphism codomain0 i, i)) $ m_orphismSet codomain0
+
+
+m_orphismSet :: Object -> [Int]
+m_orphismSet codomain0 =
+  if multiplicity codomain0 one > 0
+  then [0..(multiplicity codomain0 one)]
+  else []
+
+oneIndexToMorphism :: Object -> Int -> Morphism
+oneIndexToMorphism codomain0 n =
+  if multiplicity codomain0 one > 0
+  then morphism (toObject one) codomain0  $ \so ->
+           if so == one
+           then M.fromLists $
+                (replicate n [0])
+                ++ [[1]]
+                ++ (replicate
+                    ((multiplicity codomain0 one) - 1 - n) [0])
+           else emptyMatrix
+  else error "One index for wrong object"
+
+-- initialLabel :: S.InitialEdge -> Object 
+-- initialLabel ie = 
+--   case ie of
+--     S.LeftLoop -> toObject $ AE (AElement 0)
+--     S.RightLoop -> toObject $ AE (AElement 0)
+--     S.LeftLeg -> toObject $ AE (AElement 0)
+--     S.RightLeg -> toObject $ AE (AElement 0)
+
+
+-- phi =  idMorphism $ substO $ S.treeLabel
+--   $ S.initialEdgeTree $ S.IV S.Main
+
+
 basis :: [BasisElement]
 basis =  concat $ map (uncurry $ \il ms -> [(il, m)
                                            |  m <- ms])
   [(il, morphismSet $ toCodomain il) | il <- allInitialLabels]
 
 
-answer =
-  map (uncurry $ \initialLabel0 initialMorphism ->
-          -- map sum $ map M.toList $ subMatrix_ $
-          substM initialLabel0 (fst initialMorphism) S.finalMorphism
-      ) basis
+finalMorphism :: BasisElement -> Morphism
+finalMorphism be =
+  let
+    (initialLabel0, initialMorphism) = be
+  in
+    substM initialLabel0 (fst initialMorphism) S.finalMorphism
+
+
+finalLabel :: BasisElement -> S.InitialEdge -> Object
+finalLabel basisElement0 initialEdge0 =
+  substO (fst basisElement0) $ S.objectLabel $ S.newInitialEdge initialEdge0
+  
+  
+
+answer = map finalMorphism basis
+  -- map (uncurry $ \initialLabel0 initialMorphism ->
+  --         -- map sum $ map M.toList $ subMatrix_ $
+  --         substM initialLabel0 (fst initialMorphism) S.finalMorphism
+  --     ) basis
+
+
+-- FIXME: get the order correct
+-- decompose :: BasisElement -> Morphism 
+--            -> (S.InitialEdge -> SimpleObject) -> [Morphism]
+-- decompose basisElement0 morphism0 label0 simpleLabel0 =
+--   let
+--     simpleIndices0 = sequence (\ie -> [1..(multiplicity
+--                                            (simpleLabel0 ie)
+--                                            $ map label0 ie)]
+--                               ) allInitialEdges
+--   in
+    
+    
+
 
 
 class Finite a where
@@ -782,9 +819,14 @@ toList f = map f allElements
 instance Finite S.InitialEdge where
   allElements = allInitialEdges
 
--- TODO: Write this
+
+-- TODO: Decompose edge labels
 -- rMatrixCoeff :: Morphism -> BasisElement -> Scalar
-  
+-- rMatrixCoeff m be =
+--   Scalar
+--   { coeff  = 
+--   , tauExp =  
+--   }
   
 
 
@@ -796,5 +838,11 @@ instance Finite S.InitialEdge where
 -- -- (Direct sum stuff).  In particular, add conceptual types to wrap
 -- -- around the computational types (i.e. SimpleObject functions to wrap
 -- -- around the matrices)
+
+-- a basis for the stringnet space consists of  a basis for each
+-- morphism space for every labelling of edges by simple objects
+newtype Basis = Basis
+  { stringnets :: [S.Stringnet]
+  }
 
 

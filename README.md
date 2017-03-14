@@ -16,7 +16,7 @@ References and notes
    space.
    
  * [Finiteness for Mapping Class Group Representations from Twisted
-   Dijkgraaf-Witten Theory] (https://arxiv.org/abs/1610.06069), Paul
+   Dijkgraaf-Witten Theory](https://arxiv.org/abs/1610.06069), Paul
    Gustafson.  The figures in this paper give (most of) the local
    moves for computing the representations of mapping class group
    generators

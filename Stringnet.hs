@@ -15,10 +15,12 @@
 --
 -- TODO: Style refactoring
 --     - comment top-level (exported) functions
---     - consistent use of State TwoComplex
+--     - consistent use of State Stringnet
 --     
 -- TODO: Make all functions total
 --       - Get rid of toIV type casts
+--
+-- TODO: factor TwoComplex out of Stringnet
 --
 -- TODO: unit tests
 --
@@ -87,6 +89,10 @@ instance Functor Tree where
   fmap f (Leaf l) = Leaf $ f l
   fmap f (Node a b) = Node (fmap f a) (fmap f b)
 
+instance Foldable Tree where
+  foldMap f (Leaf x) = f x
+  foldMap f (Node a b) = (foldMap f a) `mappend` (foldMap f b)
+
 data Stringnet = Stringnet
                   { vertices      :: ![InteriorVertex]
                   , edges         :: ![Edge]
@@ -103,10 +109,12 @@ data Stringnet = Stringnet
                   -- image under contractions
                   , imageVertex    :: !(Vertex -> Vertex)     
 
-                  , morphismLabel :: !(InteriorVertex -> Morphism)   
+                  , morphismLabel :: !(InteriorVertex -> Morphism)
 
                   -- CCW ordering, outgoing orientation
-                  , edgeTree      :: !(Vertex -> Tree Edge)  
+                  , edgeTree      :: !(Vertex -> Tree Edge)
+
+                  , objectLabel   :: !(Edge -> Object)
                   }
 
 
@@ -162,7 +170,6 @@ toTree x = T.Node (Just x) []
 instance Semigroup Morphism where
   a <> b = Compose a b
 
-  
 
 toDataTree :: Tree a -> T.Tree (Maybe a)
 toDataTree (Leaf x) = T.Node (Just x) []
@@ -234,18 +241,19 @@ end :: Edge -> Stringnet -> Vertex
 end e tc = (endpoints e tc) !! 1
 
 
-objectLabel :: Edge -> Object
-objectLabel (IE e) = OVar e
-objectLabel (FirstHalf e) = objectLabel e
-objectLabel (SecondHalf e) = objectLabel e
-objectLabel (Connector _ _ _) = One
-objectLabel (TensorE e1 e2) = TensorO (objectLabel e1) (objectLabel e2)
-objectLabel (Reverse e)  = star (objectLabel e)
+objectLabel0 :: Edge -> Object
+objectLabel0 (IE e) = OVar e
+objectLabel0 (FirstHalf e) = objectLabel0 e
+objectLabel0 (SecondHalf e) = objectLabel0 e
+objectLabel0 (Connector _ _ _) = One
+objectLabel0 (TensorE e1 e2) = TensorO (objectLabel0 e1) (objectLabel0 e2)
+objectLabel0 (Reverse e)  = star (objectLabel0 e)
 
 
-treeLabel :: Tree Edge -> Object
-treeLabel (Leaf e) = objectLabel e
-treeLabel (Node x y) = TensorO (treeLabel x) (treeLabel y)
+treeLabel :: (Edge -> Object) -> Tree Edge -> Object
+treeLabel label (Leaf e) = label e
+treeLabel label (Node x y) =
+  TensorO (treeLabel label x) (treeLabel label y)
 
 
 -- reverseEdge :: Edge -> State Stringnet Edge
@@ -274,16 +282,16 @@ replace subTree1 subTree2 bigTree =
 -- RightLoop))) (Node (Leaf (IE RightLeg)) (Leaf (IE RightLoop)))) (Leaf $ IE
 -- RightLoop) (initialEdgeTree $ IV Main)
 --
-replacePlusH :: Morphism -> Tree Edge -> Tree Edge -> Tree Edge -> (Tree Edge, Tree Morphism)
-replacePlusH m oldSubTree newSubTree bigTree = 
+replacePlusH :: Stringnet -> Morphism -> Tree Edge -> Tree Edge -> Tree Edge -> (Tree Edge, Tree Morphism)
+replacePlusH sn m oldSubTree newSubTree bigTree = 
   if bigTree == oldSubTree
   then (newSubTree, Leaf m)
   else case bigTree of
-    Leaf x  -> (Leaf x, Leaf $ Id $ objectLabel x)
+    Leaf x  -> (Leaf x, Leaf $ Id $ objectLabel sn x)
     Node x y ->
       let
-        (tex, tmx) = replacePlusH m oldSubTree newSubTree x
-        (tey, tmy) = replacePlusH m oldSubTree newSubTree y
+        (tex, tmx) = replacePlusH sn m oldSubTree newSubTree x
+        (tey, tmy) = replacePlusH sn m oldSubTree newSubTree y
       in
         (Node tex tey, Node tmx tmy)
 
@@ -291,9 +299,9 @@ tensorMTree :: Tree Morphism -> Morphism
 tensorMTree (Leaf m) = m
 tensorMTree (Node x y) = TensorM (tensorMTree x) (tensorMTree y)
 
-replacePlus :: Morphism -> Tree Edge -> Tree Edge -> Tree Edge -> (Tree Edge, Morphism)
-replacePlus m oldSubTree newSubTree bigTree =
-  let (eTree, mTree) = replacePlusH m oldSubTree newSubTree bigTree in
+replacePlus :: Stringnet -> Morphism -> Tree Edge -> Tree Edge -> Tree Edge -> (Tree Edge, Morphism)
+replacePlus sn m oldSubTree newSubTree bigTree =
+  let (eTree, mTree) = replacePlusH sn m oldSubTree newSubTree bigTree in
     (eTree, tensorMTree mTree)
 
 -- TODO: debug the following 
@@ -353,9 +361,9 @@ associateL v0 subTree@(Node x yz) =
         state $ \tc ->
         (newSubTree,
          let
-           (newEdgeTree, morphism) = replacePlus
-               (AlphaI (treeLabel x) (treeLabel y)
-                           (treeLabel z))
+           (newEdgeTree, morphism) = replacePlus tc
+               (AlphaI (treeLabel (objectLabel tc) x) (treeLabel (objectLabel tc) y)
+                           (treeLabel (objectLabel tc) z))
                subTree newSubTree $ edgeTree tc $ IV v0
          in
            tc
@@ -381,8 +389,12 @@ associateR v0 subTree@(Node xy z) =
         state $ \tc ->
                   (newSubTree,
                    let
-                     (newEdgeTree, morphism) = replacePlus
-                       (Alpha (treeLabel x) (treeLabel y) (treeLabel z))
+                     (newEdgeTree, morphism) = replacePlus tc
+                       (Alpha
+                        (treeLabel (objectLabel tc) x)
+                        (treeLabel (objectLabel tc) y)
+                        (treeLabel (objectLabel tc) z)
+                       )
                        subTree newSubTree $ edgeTree tc $ IV v0
                    in
                      tc
@@ -458,7 +470,7 @@ zRotate v0 =
             if v == v0 
             then case (edgeTree tc (IV v0)) of
               Node y (Leaf x) ->
-                zMorphism (objectLabel x) (treeLabel y) (morphismLabel tc v)
+                zMorphism (objectLabel tc x) (treeLabel (objectLabel tc) y) (morphismLabel tc v)
            else morphismLabel tc v
         }
       )
@@ -617,11 +629,11 @@ contractHelper contractedEdge  = state $ \tc ->
 
 
                 , morphismLabel = (\v -> if (v == composition) 
-                                         then  Compose ((Id $ treeLabel (leftSubTree $ edgeTree tc $ IV v0))
+                                         then  Compose ((Id $ treeLabel (objectLabel tc) (leftSubTree $ edgeTree tc $ IV v0))
                                                        `TensorM`
-                                                         (Ev $ objectLabel contractedEdge)
+                                                         (Ev $ objectLabel tc contractedEdge)
                                                          `TensorM`
-                                                        (Id $ treeLabel (rightSubTree $ edgeTree tc $ IV v1))
+                                                        (Id $ treeLabel (objectLabel tc) (rightSubTree $ edgeTree tc $ IV v1))
                                                        )
                                                (TensorM (morphismLabel tc v0)
                                                 (morphismLabel tc v1))
@@ -645,12 +657,12 @@ connect e1 e2 d = state $ \tc ->
   ,
     let
       (edgeTree1, morphism1) =
-        replacePlus (RhoI $ objectLabel e1)
+        replacePlus tc (RhoI $ objectLabel tc e1)
         (Leaf e1) (Node (Leaf e1) (Leaf $ connection))
         (edgeTree tc $ start e1 tc)
 
       (edgeTree2, morphism2) =
-        replacePlus (RhoI $ objectLabel e2)
+        replacePlus tc (RhoI $ objectLabel tc e2)
         (Leaf e2) (Node (Leaf e2) (Leaf $ rev connection))
         (edgeTree tc $ start e2 tc)
     in
@@ -711,7 +723,7 @@ addCoev e = state $ \tc ->
                                           ) . (map return) . perimeter tc
 
                 , morphismLabel = \v -> if v == mp
-                                        then Coev $ objectLabel e
+                                        then Coev $ objectLabel tc e
                                         else morphismLabel tc v
 
                 
@@ -750,14 +762,15 @@ initialEdgeTree v = case v of
      )
 
 
-initialTC :: Stringnet
-initialTC = Stringnet { vertices = [Main]
+initialStringnet :: Stringnet
+initialStringnet = Stringnet { vertices = [Main]
                        , edges    = map IE [LeftLoop, RightLoop, LeftLeg, RightLeg]
                        , disks    = [Outside, LeftDisk, RightDisk]
                        , imageVertex    = id
                        , perimeter = initialPerimeter
                        , morphismLabel  =  (\m -> case m of Main -> Phi)
                        , edgeTree = initialEdgeTree
+                       , objectLabel = objectLabel0
                        }
 
 braid :: State Stringnet ()            
@@ -835,7 +848,7 @@ newInitialEdge ie =
     LeftLoop -> Reverse (TensorE (TensorE (TensorE (Reverse (FirstHalf (IE LeftLoop))) (Reverse (FirstHalf (IE LeftLeg)))) (SecondHalf (SecondHalf (IE LeftLoop)))) (Reverse (FirstHalf (IE RightLoop))))
 
 finalSN :: Stringnet
-finalSN = execState braid initialTC
+finalSN = execState braid initialStringnet
 
 finalVertex :: InteriorVertex
 finalVertex = vertices finalSN !! 0
@@ -847,7 +860,7 @@ finalEdgeTree :: Tree Edge
 finalEdgeTree = edgeTree finalSN $ IV finalVertex
 
 
--- testDisk = evalState braid initialTC
+-- testDisk = evalState braid initialStringnet
 -- testPerim = perimeter finalSN testDisk
 -- testE1 = testPerim !! 0
 -- testE2 = rev (testPerim !! 1)
@@ -862,18 +875,18 @@ finalEdgeTree = edgeTree finalSN $ IV finalVertex
 -- TESTS
 
 -- PASS
--- testTC = execState (isolate2 (IE LeftLoop) (IE LeftLeg) Main) initialTC
+-- testTC = execState (isolate2 (IE LeftLoop) (IE LeftLeg) Main) initialStringnet
 -- pprint $ edgeTree testTC $ IV Main
 
 -- PASS
-test =  execState (isolate2 (rev $ IE RightLoop) (IE LeftLoop)  Main) initialTC
+test =  execState (isolate2 (rev $ IE RightLoop) (IE LeftLoop)  Main) initialStringnet
 -- p =  pprint $ edgeTree testTC2 Main
 
 -- PASS
--- testTC3 = execState  (zRotate Main) initialTC
+-- testTC3 = execState  (zRotate Main) initialStringnet
 
 -- PASS
--- test = execState (rotateToEnd RightLoop Main) initialTC
+-- test = execState (rotateToEnd RightLoop Main) initialStringnet
 
 -- test = execState (
 --   do
@@ -882,7 +895,7 @@ test =  execState (isolate2 (rev $ IE RightLoop) (IE LeftLoop)  Main) initialTC
 --     zRotate Main
 --     isolateR Main
 --   )
---   initialTC
+--   initialStringnet
 
 -- p x =  pprint $ edgeTree x $ IV Main
 

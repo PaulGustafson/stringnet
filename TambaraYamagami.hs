@@ -14,6 +14,11 @@
 -- TODO: Actually calculate the $R$ matrix wrt to basis of simple
 -- objects.  
 --
+-- TODO: Optimization: Keep objects/morphisms as tensor products.
+-- Calculate compositions factorwise if possible.
+--
+-- TODO: Extract Stringnet typeclass
+--
 -- TODO: Use sums instead of direct sum at appropriate times
 --
 -- TODO: Dehackify ev method.
@@ -25,12 +30,12 @@
 --
 
 
-
-
 module TambaraYamagami where
 
+import qualified TwoComplex as TC
 import qualified Data.List.NonEmpty as N
 import qualified Data.Matrix as M
+import qualified Data.Foldable as F
 import Data.Semigroup
 import qualified Data.Vector        as V
 import qualified Data.List          as L
@@ -256,8 +261,10 @@ toObject x = object $ \y ->
 
 -- Matrices of scalars 
 data Morphism = Morphism 
-  { domain   :: !Object
-  , codomain :: !Object
+  { domain   :: !Object -- redundant
+  , codomain :: !Object -- redundant
+
+  --  , stringnet :: S.Stringnet -- keep track of edge labels after every morphism 
   
   -- the only morphisms between simple objects are identity morphisms
   , subMatrix_ :: ![M.Matrix Scalar]
@@ -713,9 +720,9 @@ allInitialLabels = map (\x y -> x !! (fromEnum y))
 
 toCodomain :: (S.InitialEdge -> SimpleObject) -> Object
 toCodomain il =
-  substO il $ S.treeLabel $ S.initialEdgeTree $ S.IV S.Main
+  substO il $ S.treeLabel (S.objectLabel S.initialStringnet) (S.initialEdgeTree $ S.IV S.Main)
 
--- TODO: Get rid of redundant morphism
+-- TODO: Convert to Edge instead of IE, and InteriorVertex -> OneIndex
 type BasisElement = (S.InitialEdge -> SimpleObject, (Morphism, Int))
 
 -- data B_asisElement = B_asisElement
@@ -765,8 +772,45 @@ oneIndexToMorphism codomain0 n =
 --   $ S.initialEdgeTree $ S.IV S.Main
 
 
-basis :: [BasisElement]
-basis =  concat $ map (uncurry $ \il ms -> [(il, m)
+data Stringnet = Stringnet
+                  { twoComplex    :: TC.TwoComplex
+                  , objectLabel   :: !(S.Edge -> Object)
+                  , morphismLabel :: !(S.InteriorVertex -> Morphism)
+                  }
+
+
+newtype TensorObject = TensorObject { getObject :: Object}
+
+instance Monoid TensorObject where
+  mempty = TensorObject $ toObject $ one
+  mappend a b = TensorObject $ tensorO (getObject a) (getObject b)
+
+
+-- Given a two complex, a basis element is parametrized by a labelling
+-- of all edges in the two complex by simple objects and, for each
+-- interior vertex, a choice of basis for the resulting Hom space
+-- TODO: Figure out ordering of 1's in Hom space
+simpleStringnet :: TC.TwoComplex -> (S.Edge -> SimpleObject)
+  -> (S.InteriorVertex -> Int) -> Stringnet
+simpleStringnet twoComplex0 label oneIndex =
+  Stringnet 
+  { twoComplex = twoComplex0
+  , objectLabel = toObject . label
+  , morphismLabel = \iv ->
+      oneIndexToMorphism
+      (getObject $ F.fold $ fmap
+       (TensorObject . toObject . label)
+       $ TC.edgeTree twoComplex0 $ S.IV iv)
+      (oneIndex iv)
+  }
+
+
+-- Stringnet -> Stringnet -> Scalar
+    
+  
+
+initialBasis :: [BasisElement]
+initialBasis =  concat $ map (uncurry $ \il ms -> [(il, m)
                                            |  m <- ms])
   [(il, morphismSet $ toCodomain il) | il <- allInitialLabels]
 
@@ -779,13 +823,13 @@ finalMorphism be =
     substM initialLabel0 (fst initialMorphism) S.finalMorphism
 
 
-finalLabel :: BasisElement -> S.InitialEdge -> Object
-finalLabel basisElement0 initialEdge0 =
-  substO (fst basisElement0) $ S.objectLabel $ S.newInitialEdge initialEdge0
+-- finalLabel :: BasisElement -> S.InitialEdge -> Object
+-- finalLabel basisElement0 initialEdge0 =
+--   substO (fst basisElement0) $ S.objectLabel $ S.newInitialEdge initialEdge0
   
   
 
-answer = map finalMorphism basis
+answer = map finalMorphism initialBasis
   -- map (uncurry $ \initialLabel0 initialMorphism ->
   --         -- map sum $ map M.toList $ subMatrix_ $
   --         substM initialLabel0 (fst initialMorphism) S.finalMorphism
@@ -839,10 +883,22 @@ instance Finite S.InitialEdge where
 -- -- around the computational types (i.e. SimpleObject functions to wrap
 -- -- around the matrices)
 
--- a basis for the stringnet space consists of  a basis for each
--- morphism space for every labelling of edges by simple objects
-newtype Basis = Basis
-  { stringnets :: [S.Stringnet]
-  }
 
+
+
+-- A basis for the stringnet space consists of  a basis for each
+-- morphism space for every labelling of edges by simple objects
+
+-- TODO: consider factoring the common TwoComplex
+--
+-- newtype Basis = Basis
+--   { stringnets :: [S.Stringnet]
+--   }
+
+
+-- data MorphismMatrix = MorphismMatrix
+--   { domainBasis :: Basis
+--   , codomainBasis :: Basis
+--   , morphismMatrix :: M.Matrix Morphism
+--   }
 

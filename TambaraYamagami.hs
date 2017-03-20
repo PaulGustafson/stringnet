@@ -32,6 +32,7 @@
 
 module TambaraYamagami where
 
+import Finite
 import qualified TwoComplex as TC
 import qualified Data.List.NonEmpty as N
 import qualified Data.Matrix as M
@@ -689,6 +690,8 @@ compose il phi sm1 sm2 =
          ++ (show $ codomain m2) ++ ". "
          ++ (show sm1) ++ " has domain: " ++ (show $ domain m1)
   
+
+
     
 -- Substitute in the TY-specific morphisms
 substM :: (S.InitialEdge -> SimpleObject) -> Morphism -> S.Morphism -> Morphism
@@ -723,7 +726,7 @@ toCodomain il =
   substO il $ S.treeLabel (S.objectLabel S.initialStringnet) (S.initialEdgeTree $ S.IV S.Main)
 
 -- TODO: Convert to Edge instead of IE, and InteriorVertex -> OneIndex
-type BasisElement = (S.InitialEdge -> SimpleObject, (Morphism, Int))
+type InitialBasisElement = (S.InitialEdge -> SimpleObject,  Int)
 
 -- data B_asisElement = B_asisElement
 --   { initialLabel :: S.InitialEdge -> SimpleObject
@@ -734,14 +737,8 @@ type BasisElement = (S.InitialEdge -> SimpleObject, (Morphism, Int))
 -- --  Initial labels
 -- ------------------------------------------------------
 
--- morphisms spanning 1 -> Object
-morphismSet :: Object -> [(Morphism, Int)]
+morphismSet :: Object -> [Int]
 morphismSet codomain0 =
-  map (\i -> (oneIndexToMorphism codomain0 i, i)) $ m_orphismSet codomain0
-
-
-m_orphismSet :: Object -> [Int]
-m_orphismSet codomain0 =
   if multiplicity codomain0 one > 0
   then [0..(multiplicity codomain0 one)]
   else []
@@ -759,23 +756,11 @@ oneIndexToMorphism codomain0 n =
            else emptyMatrix
   else error "One index for wrong object"
 
--- initialLabel :: S.InitialEdge -> Object 
--- initialLabel ie = 
---   case ie of
---     S.LeftLoop -> toObject $ AE (AElement 0)
---     S.RightLoop -> toObject $ AE (AElement 0)
---     S.LeftLeg -> toObject $ AE (AElement 0)
---     S.RightLeg -> toObject $ AE (AElement 0)
 
-
--- phi =  idMorphism $ substO $ S.treeLabel
---   $ S.initialEdgeTree $ S.IV S.Main
-
-
-data Stringnet = Stringnet
+data SimpleStringnet = SimpleStringnet
                   { twoComplex    :: TC.TwoComplex
-                  , objectLabel   :: !(S.Edge -> Object)
-                  , morphismLabel :: !(S.InteriorVertex -> Morphism)
+                  , simpleObjectLabel   :: !(S.Edge -> SimpleObject)
+                  , oneIndex :: !(S.InteriorVertex -> Int)
                   }
 
 
@@ -790,115 +775,44 @@ instance Monoid TensorObject where
 -- of all edges in the two complex by simple objects and, for each
 -- interior vertex, a choice of basis for the resulting Hom space
 -- TODO: Figure out ordering of 1's in Hom space
-simpleStringnet :: TC.TwoComplex -> (S.Edge -> SimpleObject)
-  -> (S.InteriorVertex -> Int) -> Stringnet
-simpleStringnet twoComplex0 label oneIndex =
-  Stringnet 
-  { twoComplex = twoComplex0
-  , objectLabel = toObject . label
-  , morphismLabel = \iv ->
-      oneIndexToMorphism
-      (getObject $ F.fold $ fmap
-       (TensorObject . toObject . label)
-       $ TC.edgeTree twoComplex0 $ S.IV iv)
-      (oneIndex iv)
-  }
+-- simpleStringnet :: TC.TwoComplex -> (S.Edge -> SimpleObject)
+--   -> (S.InteriorVertex -> Int) -> Stringnet
+-- simpleStringnet twoComplex0 label oneIndex =
+--   Stringnet 
+--   { twoComplex = twoComplex0
+--   , objectLabel = toObject . label
+--   , morphismLabel = \iv ->
+--       oneIndexToMorphism
+--       (getObject $ F.fold $ fmap
+--        (TensorObject . toObject . label)
+--        $ TC.edgeTree twoComplex0 $ S.IV iv)
+--       (oneIndex iv)
+--   }
 
 
--- Stringnet -> Stringnet -> Scalar
-    
-  
 
-initialBasis :: [BasisElement]
+type Stringnet = SimpleStringnet -> Scalar
+
+
+
+
+initialBasis :: [InitialBasisElement]
 initialBasis =  concat $ map (uncurry $ \il ms -> [(il, m)
                                            |  m <- ms])
   [(il, morphismSet $ toCodomain il) | il <- allInitialLabels]
 
 
-finalMorphism :: BasisElement -> Morphism
+finalMorphism :: InitialBasisElement -> Morphism
 finalMorphism be =
   let
-    (initialLabel0, initialMorphism) = be
+    (initialLabel, initialOneIndex) = be
+    initialCodomain = toCodomain initialLabel
+    initialMorphism = oneIndexToMorphism
+      initialCodomain initialOneIndex
   in
-    substM initialLabel0 (fst initialMorphism) S.finalMorphism
-
-
--- finalLabel :: BasisElement -> S.InitialEdge -> Object
--- finalLabel basisElement0 initialEdge0 =
---   substO (fst basisElement0) $ S.objectLabel $ S.newInitialEdge initialEdge0
+    substM initialLabel initialMorphism S.finalMorphism
   
   
 
 answer = map finalMorphism initialBasis
-  -- map (uncurry $ \initialLabel0 initialMorphism ->
-  --         -- map sum $ map M.toList $ subMatrix_ $
-  --         substM initialLabel0 (fst initialMorphism) S.finalMorphism
-  --     ) basis
-
-
--- FIXME: get the order correct
--- decompose :: BasisElement -> Morphism 
---            -> (S.InitialEdge -> SimpleObject) -> [Morphism]
--- decompose basisElement0 morphism0 label0 simpleLabel0 =
---   let
---     simpleIndices0 = sequence (\ie -> [1..(multiplicity
---                                            (simpleLabel0 ie)
---                                            $ map label0 ie)]
---                               ) allInitialEdges
---   in
-    
-    
-
-
-
-class Finite a where
-  allElements :: [a]
-
-instance (Finite a, Show b) => Show (a -> b) where
-  show f = show $ toList f
-
-toList :: Finite a => (a -> b) -> [b]
-toList f = map f allElements
-
-instance Finite S.InitialEdge where
-  allElements = allInitialEdges
-
-
--- TODO: Decompose edge labels
--- rMatrixCoeff :: Morphism -> BasisElement -> Scalar
--- rMatrixCoeff m be =
---   Scalar
---   { coeff  = 
---   , tauExp =  
---   }
-  
-
-
--- -- Debugging strategies
--- -- 
--- -- 1. finalMorphism (Look at subtrees)
--- --
--- -- 2. Look at TY code for error
--- -- (Direct sum stuff).  In particular, add conceptual types to wrap
--- -- around the computational types (i.e. SimpleObject functions to wrap
--- -- around the matrices)
-
-
-
-
--- A basis for the stringnet space consists of  a basis for each
--- morphism space for every labelling of edges by simple objects
-
--- TODO: consider factoring the common TwoComplex
---
--- newtype Basis = Basis
---   { stringnets :: [S.Stringnet]
---   }
-
-
--- data MorphismMatrix = MorphismMatrix
---   { domainBasis :: Basis
---   , codomainBasis :: Basis
---   , morphismMatrix :: M.Matrix Morphism
---   }
 

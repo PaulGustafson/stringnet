@@ -4,7 +4,7 @@ module Algebra where
 
 import Data.Group
 import Data.Semigroup
-import qualified Data.List          as L
+import qualified Data.List as L
 
 -- order of abelian group A
 order :: Int

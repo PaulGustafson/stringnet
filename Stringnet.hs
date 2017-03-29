@@ -99,7 +99,15 @@ instance Foldable Tree where
   foldMap f (Leaf x) = f x
   foldMap f (Node a b) = (foldMap f a) `mappend` (foldMap f b)
 
-data Stringnet = Stringnet
+
+data Object = OVar InitialEdge -- Object variable labeling edge
+            | One
+            | Star Object  -- Don't use this constructor except to
+                           -- pattern match, use "star" instead
+            | TensorO Object Object
+            deriving (Show)  
+
+data ColoredGraph = ColoredGraph
                   { vertices      :: ![InteriorVertex]
                   , edges         :: ![Edge]
                   , disks         :: ![Disk]
@@ -108,8 +116,8 @@ data Stringnet = Stringnet
                   -- cycle (the end point of an edge should be the the
                   -- starting point of the next edges).  Additionally,
                   -- the edges should either lie in the edges of the
-                  -- Stringnet or be the reverse of such an edge.  CCW
-                  -- ordering.
+                  -- ColoredGraph or be the reverse of such an edge.
+                  -- CCW ordering.
                   , perimeter     :: !(Disk -> [Edge])
 
                   -- image under contractions
@@ -123,13 +131,6 @@ data Stringnet = Stringnet
                   , objectLabel   :: !(Edge -> Object)
                   }
 
-
-data Object = OVar InitialEdge -- Object variable labeling edge
-            | One
-            | Star Object  -- Don't use this constructor except to
-                           -- pattern match, use "star" instead
-            | TensorO Object Object
-            deriving (Show)  
 
 tensorO :: Object -> Object -> Object
 tensorO o1 o2 = o1 `TensorO` o2
@@ -149,32 +150,35 @@ data Morphism = Phi
               | TensorM Morphism Morphism
               | PivotalJ Object -- X -> X**
               | PivotalJI Object -- X** -> X
-              | Compose Morphism Morphism
+              | Compose [Morphism]
               deriving (Show)
+
+compose :: Morphism -> Morphism -> Morphism
+compose (Compose ms) (Compose ns) = Compose $ ms ++ ns
+compose (Compose ms) n = Compose $ ms ++ [n]
+compose n (Compose ms) = Compose $ [n] ++ ms
+compose m n = Compose [m, n]
+
 
 toTensorTree :: Morphism -> Tree Morphism
 toTensorTree (TensorM x y) =
   Node (toTensorTree x) (toTensorTree y)
 toTensorTree x = Leaf x
 
-toCompositionTree :: Morphism -> Tree Morphism
-toCompositionTree (Compose x y) =
-  Node (toCompositionTree x) (toCompositionTree y)
-toCompositionTree x = Leaf x
-
 toCompositionList :: Morphism -> [Morphism]
-toCompositionList = flatten . toCompositionTree
+toCompositionList (Compose ms) = ms
+toCompositionList m = [m]
 
 toTree :: Morphism -> T.Tree (Maybe Morphism)
-toTree m@(Compose _ _) =
-  T.Node Nothing  (map toTree $ toCompositionList m)
+-- toTree m@(Compose _) =
+--   T.Node Nothing  (map toTree $ toCompositionList m)
 toTree (TensorM x y) =
   T.Node Nothing [(toTree x), (toTree y)]
 toTree x = T.Node (Just x) []
 
 
 instance Semigroup Morphism where
-  a <> b = Compose a b
+  a <> b = compose a b
 
 
 toDataTree :: Tree a -> T.Tree (Maybe a)
@@ -224,26 +228,26 @@ initialStart e = (initialEndpoints e) !! 0
 initialEnd :: Edge -> Vertex
 initialEnd e = (initialEndpoints e) !! 1
 
--- TODO: maybe put this into Stringnet, to make parallel with
+-- TODO: maybe put this into ColoredGraph, to make parallel with
 --       perimeter also, eliminate "image"
-endpoints :: Edge -> Stringnet -> [Vertex]
+endpoints :: Edge -> ColoredGraph -> [Vertex]
 endpoints e tc = map (imageVertex tc) (initialEndpoints e)
 
 -- Monadic versions of methods
-edgeTreeM :: Vertex -> State Stringnet (Tree Edge)
+edgeTreeM :: Vertex -> State ColoredGraph (Tree Edge)
 edgeTreeM v = state $ \tc -> (edgeTree tc v, tc)
 
 
-endpointsM :: Edge -> State Stringnet [Vertex]
+endpointsM :: Edge -> State ColoredGraph [Vertex]
 endpointsM e = state $ \tc -> (endpoints e tc, tc)
 
-perimeterM :: Disk -> State Stringnet [Edge]
+perimeterM :: Disk -> State ColoredGraph [Edge]
 perimeterM d = state $ \tc -> (perimeter tc d, tc)
 
-start :: Edge -> Stringnet -> Vertex
+start :: Edge -> ColoredGraph -> Vertex
 start e tc = (endpoints e tc) !! 0
 
-end :: Edge -> Stringnet -> Vertex
+end :: Edge -> ColoredGraph -> Vertex
 end e tc = (endpoints e tc) !! 1
 
 
@@ -262,7 +266,7 @@ treeLabel label (Node x y) =
   TensorO (treeLabel label x) (treeLabel label y)
 
 
--- reverseEdge :: Edge -> State Stringnet Edge
+-- reverseEdge :: Edge -> State ColoredGraph Edge
 -- reverseEdge e0 = state $ \tc ->
 --   (rev e0
 --   , tc
@@ -288,7 +292,7 @@ replace subTree1 subTree2 bigTree =
 -- RightLoop))) (Node (Leaf (IE RightLeg)) (Leaf (IE RightLoop)))) (Leaf $ IE
 -- RightLoop) (initialEdgeTree $ IV Main)
 --
-replacePlusH :: Stringnet -> Morphism -> Tree Edge -> Tree Edge -> Tree Edge -> (Tree Edge, Tree Morphism)
+replacePlusH :: ColoredGraph -> Morphism -> Tree Edge -> Tree Edge -> Tree Edge -> (Tree Edge, Tree Morphism)
 replacePlusH sn m oldSubTree newSubTree bigTree = 
   if bigTree == oldSubTree
   then (newSubTree, Leaf m)
@@ -305,7 +309,7 @@ tensorMTree :: Tree Morphism -> Morphism
 tensorMTree (Leaf m) = m
 tensorMTree (Node x y) = TensorM (tensorMTree x) (tensorMTree y)
 
-replacePlus :: Stringnet -> Morphism -> Tree Edge -> Tree Edge -> Tree Edge -> (Tree Edge, Morphism)
+replacePlus :: ColoredGraph -> Morphism -> Tree Edge -> Tree Edge -> Tree Edge -> (Tree Edge, Morphism)
 replacePlus sn m oldSubTree newSubTree bigTree =
   let (eTree, mTree) = replacePlusH sn m oldSubTree newSubTree bigTree in
     (eTree, tensorMTree mTree)
@@ -314,7 +318,7 @@ replacePlus sn m oldSubTree newSubTree bigTree =
 --
 -- data Side = Left | Right
 --
--- associate :: Side -> InteriorVertex -> Tree Edge -> State Stringnet (Tree Edge)
+-- associate :: Side -> InteriorVertex -> Tree Edge -> State ColoredGraph (Tree Edge)
 -- associate side v0 subTree@(Node x y) =
 --   let
 --     (newSubTree, unaugmentedMorphism) = case side of
@@ -346,10 +350,10 @@ replacePlus sn m oldSubTree newSubTree bigTree =
 --            }
 --         )
 
--- associateL :: InteriorVertex -> Tree Edge -> State Stringnet (Tree Edge)
+-- associateL :: InteriorVertex -> Tree Edge -> State ColoredGraph (Tree Edge)
 -- associateL = associate Left 
 
--- associateR :: InteriorVertex -> Tree Edge -> State Stringnet (Tree Edge)
+-- associateR :: InteriorVertex -> Tree Edge -> State ColoredGraph (Tree Edge)
 -- associateR = associate Right
 
 
@@ -359,7 +363,7 @@ replacePlus sn m oldSubTree newSubTree bigTree =
 --  let tc2 = execState a initialTC
 --  edgeTree tc2 $ IV Main
 
-associateL :: InteriorVertex -> Tree Edge -> State Stringnet (Tree Edge)
+associateL :: InteriorVertex -> Tree Edge -> State ColoredGraph (Tree Edge)
 associateL v0 subTree@(Node x yz) =
   case yz of
     Node y z ->
@@ -380,14 +384,14 @@ associateL v0 subTree@(Node x yz) =
                     
            , morphismLabel = \v ->
                if v == v0
-               then Compose morphism
+               then compose morphism
                     (morphismLabel tc v)
                else morphismLabel tc v
            }
         )
 
 
-associateR :: InteriorVertex -> Tree Edge -> State Stringnet (Tree Edge)
+associateR :: InteriorVertex -> Tree Edge -> State ColoredGraph (Tree Edge)
 associateR v0 subTree@(Node xy z) =
   case xy of
     Node x y ->
@@ -411,7 +415,7 @@ associateR v0 subTree@(Node xy z) =
                               
                      , morphismLabel = \v ->
                          if v == v0
-                         then Compose (morphism)
+                         then compose (morphism)
                               (morphismLabel tc v)
                          else morphismLabel tc v
                      }
@@ -419,7 +423,7 @@ associateR v0 subTree@(Node xy z) =
 
 
 
-isolateHelperR :: InteriorVertex ->  Stringnet -> Stringnet
+isolateHelperR :: InteriorVertex ->  ColoredGraph -> ColoredGraph
 isolateHelperR v tc =
   let t = edgeTree tc (IV v) in
     case t of
@@ -427,7 +431,7 @@ isolateHelperR v tc =
       Node _ (Node _ _) -> isolateHelperR v
         $ execState (associateL v t) tc
   
-isolateHelperL :: InteriorVertex ->  Stringnet -> Stringnet
+isolateHelperL :: InteriorVertex ->  ColoredGraph -> ColoredGraph
 isolateHelperL v tc =
   let t = edgeTree tc (IV v) in
     case t of
@@ -437,11 +441,11 @@ isolateHelperL v tc =
   
      
 -- Turns the far right leaf into a depth one leaf  
-isolateR :: InteriorVertex -> State Stringnet ()
+isolateR :: InteriorVertex -> State ColoredGraph ()
 isolateR v0 = state $ \tc ->
   ((), isolateHelperR v0 tc)
 
-isolateL :: InteriorVertex -> State Stringnet ()
+isolateL :: InteriorVertex -> State ColoredGraph ()
 isolateL v0 = state $ \tc ->
   ((), isolateHelperL v0 tc)
 
@@ -459,7 +463,7 @@ zMorphism xl yl m =
   <> (Coev $ star xl)  -- 1 -> **X *X
 
 -- rotation of the rightmost edge in v0's to the leftside
-zRotate :: InteriorVertex -> State Stringnet ()
+zRotate :: InteriorVertex -> State ColoredGraph ()
 zRotate v0 =
   isolateR v0 >> 
   ( state $ \tc ->
@@ -483,7 +487,7 @@ zRotate v0 =
   )
 
 
-rotateToEndHelper :: Edge -> InteriorVertex -> Stringnet -> Stringnet
+rotateToEndHelper :: Edge -> InteriorVertex -> ColoredGraph -> ColoredGraph
 rotateToEndHelper e0 v0 tc = 
   let
     es = flatten $ edgeTree tc (IV v0)
@@ -492,7 +496,7 @@ rotateToEndHelper e0 v0 tc =
     then tc
     else rotateToEndHelper e0 v0 $ execState (zRotate v0) tc
 
-rotateToEnd :: Edge -> InteriorVertex -> State Stringnet ()
+rotateToEnd :: Edge -> InteriorVertex -> State ColoredGraph ()
 rotateToEnd e0 v0 = (state $ \tc ->
   ((), rotateToEndHelper e0 v0 tc))  >> isolateR v0
 
@@ -507,7 +511,7 @@ minimalSuperTree a1 a2 t@(Node x y)
 
 
 -- Easy optimization: calculate t from previous t
-isolate2Helper ::  Edge -> Edge -> InteriorVertex -> Stringnet -> Stringnet
+isolate2Helper ::  Edge -> Edge -> InteriorVertex -> ColoredGraph -> ColoredGraph
 isolate2Helper e1 e2 v0 tc0 =
   let
     t = minimalSuperTree e1 e2 (edgeTree tc0 $ IV v0)
@@ -521,7 +525,7 @@ isolate2Helper e1 e2 v0 tc0 =
               Leaf _ -> tc0
 
 -- Put (rev) e1 and e2 on same node
-isolate2 :: Edge -> Edge -> InteriorVertex  -> State Stringnet ()
+isolate2 :: Edge -> Edge -> InteriorVertex  -> State ColoredGraph ()
 isolate2 e1 e2 v0 = state $ \tc0 ->
   let
     firstEdge = (flatten $ edgeTree tc0 $ IV v0) !! 0
@@ -533,7 +537,7 @@ isolate2 e1 e2 v0 = state $ \tc0 ->
 
 
 -- The disk's perimeter should only have two edges
-tensorHelper :: Disk -> State Stringnet Edge
+tensorHelper :: Disk -> State ColoredGraph Edge
 tensorHelper d0 =
   state $ \tc0 ->
   let
@@ -563,7 +567,7 @@ tensorHelper d0 =
       }
     )
 
-tensorN :: Disk -> Stringnet -> Stringnet 
+tensorN :: Disk -> ColoredGraph -> ColoredGraph 
 tensorN d0 tc0 =
   let
     e1 = (perimeter tc0 d0) !! 0
@@ -577,7 +581,7 @@ tensorN d0 tc0 =
               ) tc0
 
 
-tensor :: Disk -> State Stringnet ()
+tensor :: Disk -> State ColoredGraph ()
 tensor d = state $ \tc -> ((), tensorN d tc)
 
 -- do
@@ -590,7 +594,7 @@ tensor d = state $ \tc -> ((), tensorN d tc)
 --  tensorHelper d0 
 
 
-contract :: Edge -> State Stringnet InteriorVertex
+contract :: Edge -> State ColoredGraph InteriorVertex
 contract e = do
   v0 <- fmap (toIV . (!! 0)) $ endpointsM e 
   v1 <- fmap (toIV . (!! 1)) $ endpointsM e 
@@ -606,7 +610,7 @@ leftSubTree (Node x _) = x
 rightSubTree :: Tree a -> Tree a
 rightSubTree (Node _ y) = y
 
-contractHelper :: Edge -> State Stringnet InteriorVertex
+contractHelper :: Edge -> State ColoredGraph InteriorVertex
 contractHelper contractedEdge  = state $ \tc ->
   let
     v0 = toIV $ (endpoints contractedEdge tc) !! 0
@@ -635,7 +639,7 @@ contractHelper contractedEdge  = state $ \tc ->
 
 
                 , morphismLabel = (\v -> if (v == composition) 
-                                         then  Compose ((Id $ treeLabel (objectLabel tc) (leftSubTree $ edgeTree tc $ IV v0))
+                                         then  compose ((Id $ treeLabel (objectLabel tc) (leftSubTree $ edgeTree tc $ IV v0))
                                                        `TensorM`
                                                          (Ev $ objectLabel tc contractedEdge)
                                                          `TensorM`
@@ -656,7 +660,7 @@ contractHelper contractedEdge  = state $ \tc ->
 -- Connect the starting point of the first edge to that of the second
 -- through the disk The edges e1 and e2 should be distinct elements of
 -- perimeter d.
-connect :: Edge -> Edge -> Disk -> State Stringnet Edge
+connect :: Edge -> Edge -> Disk -> State ColoredGraph Edge
 connect e1 e2 d = state $ \tc -> 
   let connection = Connector e1 e2 d in
   ( connection
@@ -701,7 +705,7 @@ connect e1 e2 d = state $ \tc ->
       }
   )
         
-addCoev :: Edge -> State Stringnet (InteriorVertex, Edge, Edge)
+addCoev :: Edge -> State ColoredGraph (InteriorVertex, Edge, Edge)
 addCoev e = state $ \tc ->
   let mp  = Midpoint e
       fh = FirstHalf e
@@ -768,8 +772,8 @@ initialEdgeTree v = case v of
      )
 
 
-initialStringnet :: Stringnet
-initialStringnet = Stringnet { vertices = [Main]
+initialColoredGraph :: ColoredGraph
+initialColoredGraph = ColoredGraph { vertices = [Main]
                        , edges    = map IE [LeftLoop, RightLoop, LeftLeg, RightLeg]
                        , disks    = [Outside, LeftDisk, RightDisk]
                        , imageVertex    = id
@@ -779,7 +783,7 @@ initialStringnet = Stringnet { vertices = [Main]
                        , objectLabel = objectLabel0
                        }
 
-braid :: State Stringnet ()            
+braid :: State ColoredGraph ()            
 braid = do
   (_,l1,r1) <- addCoev $ IE LeftLoop
   (_,l2,r2) <- addCoev $ IE LeftLeg
@@ -853,8 +857,8 @@ newInitialEdge ie =
     LeftLeg ->  IE RightLeg
     LeftLoop -> Reverse (TensorE (TensorE (TensorE (Reverse (FirstHalf (IE LeftLoop))) (Reverse (FirstHalf (IE LeftLeg)))) (SecondHalf (SecondHalf (IE LeftLoop)))) (Reverse (FirstHalf (IE RightLoop))))
 
-finalSN :: Stringnet
-finalSN = execState braid initialStringnet
+finalSN :: ColoredGraph
+finalSN = execState braid initialColoredGraph
 
 finalVertex :: InteriorVertex
 finalVertex = vertices finalSN !! 0
@@ -866,7 +870,7 @@ finalEdgeTree :: Tree Edge
 finalEdgeTree = edgeTree finalSN $ IV finalVertex
 
 
--- testDisk = evalState braid initialStringnet
+-- testDisk = evalState braid initialColoredGraph
 -- testPerim = perimeter finalSN testDisk
 -- testE1 = testPerim !! 0
 -- testE2 = rev (testPerim !! 1)
@@ -881,18 +885,18 @@ finalEdgeTree = edgeTree finalSN $ IV finalVertex
 -- TESTS
 
 -- PASS
--- testTC = execState (isolate2 (IE LeftLoop) (IE LeftLeg) Main) initialStringnet
+-- testTC = execState (isolate2 (IE LeftLoop) (IE LeftLeg) Main) initialColoredGraph
 -- pprint $ edgeTree testTC $ IV Main
 
 -- PASS
-test =  execState (isolate2 (rev $ IE RightLoop) (IE LeftLoop)  Main) initialStringnet
+test =  execState (isolate2 (rev $ IE RightLoop) (IE LeftLoop)  Main) initialColoredGraph
 -- p =  pprint $ edgeTree testTC2 Main
 
 -- PASS
--- testTC3 = execState  (zRotate Main) initialStringnet
+-- testTC3 = execState  (zRotate Main) initialColoredGraph
 
 -- PASS
--- test = execState (rotateToEnd RightLoop Main) initialStringnet
+-- test = execState (rotateToEnd RightLoop Main) initialColoredGraph
 
 -- test = execState (
 --   do
@@ -901,7 +905,7 @@ test =  execState (isolate2 (rev $ IE RightLoop) (IE LeftLoop)  Main) initialStr
 --     zRotate Main
 --     isolateR Main
 --   )
---   initialStringnet
+--   initialColoredGraph
 
 -- p x =  pprint $ edgeTree x $ IV Main
 

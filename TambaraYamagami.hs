@@ -1430,7 +1430,7 @@ toCodomain il =
 data BasisElement = BasisElement
   { initialLabel :: InitialEdge -> SimpleObject
   , oneIndex :: Int
-  }
+  } deriving (Show)
 
 instance Eq BasisElement where
   be1 == be2 =
@@ -1480,7 +1480,7 @@ instance Finite BasisElement where
 morphismSet :: Object -> [Int]
 morphismSet codomain0 =
   if multiplicity codomain0 one > 0
-  then [0..(multiplicity codomain0 one)]
+  then [0..(multiplicity codomain0 one - 1)]
   else []
 
 
@@ -1528,7 +1528,7 @@ decomposeH initialBe finalBe =
 decompose :: BasisElement -> BasisElement -> Scalar
 decompose initialBe finalBe =
   sum $ map (\i -> 
-               (subMatrix (finalMorphism initialBe) one) M.! (i, 1)
+               (subMatrix (finalMorphism initialBe) one) M.! (i + 1, 1)
             )
   $ decomposeH initialBe finalBe
   

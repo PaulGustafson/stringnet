@@ -47,7 +47,7 @@ import qualified Stringnet          as S
 import Data.Group
 import Control.Monad as CM
 import Algebra
-
+import qualified Data.Tree as T
 
 -----------------------------------
 -- Stringnet copy-paste 
@@ -95,6 +95,17 @@ data Edge =
   | Reverse Edge  
           deriving (Show, Eq)
 
+-- probably not needed
+replaceIE :: (InitialEdge -> Edge) -> Edge -> Edge
+replaceIE f (IE ie) = f ie
+replaceIE f (FirstHalf e) =  FirstHalf (replaceIE f e)
+replaceIE f (SecondHalf e) = SecondHalf (replaceIE f e)
+replaceIE f (Connector e1 e2 (Cut e3)) = Connector (replaceIE f e1) (replaceIE f e2) (Cut (replaceIE f e3))
+replaceIE f (Connector e1 e2 Outside) = Connector (replaceIE f e1) (replaceIE f e2) Outside
+replaceIE f (Connector e1 e2 LeftDisk) = Connector (replaceIE f e1) (replaceIE f e2) LeftDisk
+replaceIE f (Connector e1 e2 RightDisk) = Connector (replaceIE f e1) (replaceIE f e2) RightDisk
+replaceIE f (TensorE e1 e2) = TensorE (replaceIE f e1) (replaceIE f e2)
+replaceIE f (Reverse e) = rev (replaceIE f e)
 
 data Disk =
   -- initial disks
@@ -275,9 +286,15 @@ replacePlusH sn m oldSubTree newSubTree bigTree =
       in
         (Node tex tey, Node tmx tmy)
 
+
+--TODO: replace these functions with a Foldable instance
 tensorMTree :: Tree Morphism -> Morphism
 tensorMTree (Leaf m) = m
 tensorMTree (Node x y) = tensorM (tensorMTree x) (tensorMTree y)
+
+tensorOTree :: Tree Object -> Object
+tensorOTree (Leaf m) = m
+tensorOTree (Node x y) = tensorO (tensorOTree x) (tensorOTree y)
 
 replacePlus :: ColoredGraph -> Morphism -> Tree Edge -> Tree Edge -> Tree Edge -> (Tree Edge, Morphism)
 replacePlus sn m oldSubTree newSubTree bigTree =
@@ -422,7 +439,7 @@ isolateL v0 = state $ \tc ->
 swap :: Tree a -> Tree a
 swap (Node x y) = Node y x
 
--- 
+
 zMorphism :: Object -> Object -> Morphism -> Morphism
 zMorphism xl yl m =
   ((idMorphism xl) `tensorM`  (rho yl))
@@ -855,9 +872,11 @@ finalVertex be = vertices (finalSN be) !! 0
 finalMorphism :: BasisElement -> Morphism
 finalMorphism be = morphismLabel (finalSN be) (finalVertex be)
 
--- finalEdgeTree :: Tree Edge
--- finalEdgeTree = edgeTree finalSN $ IV finalVertex
+finalEdgeTree :: BasisElement -> Tree Edge
+finalEdgeTree be = edgeTree (finalSN be) $ IV (finalVertex be)
 
+finalObjectTree :: BasisElement -> Tree Object
+finalObjectTree be = fmap (objectLabel (finalSN be)) $ finalEdgeTree be
 
 ----------------------
 -- TY specific code
@@ -889,8 +908,7 @@ allSimpleObjects = (map AE group) ++ [M]
 
 newtype Object = Object
   { multiplicity_ :: [Int]
-  }
-
+  } 
 
 
 multiplicity :: Object -> SimpleObject -> Int
@@ -924,7 +942,6 @@ toObject x = object $ \y ->
                   if x == y
                   then 1
                   else 0
-
 
 -- Matrices of scalars 
 data Morphism = Morphism 
@@ -1089,12 +1106,6 @@ tensorSO (AE _) M = toObject M
 tensorSO (AE g1) (AE g2) = toObject $ AE $ g1 `mappend` g2
 
 
--- TODO: deal with higher multiplicity
--- tensorInv :: SimpleObject -> [(SimpleObject, SimpleObject)]
--- tensorInv so = [(x,y) | x <- allSimpleObjects
---                       , y <- allSimpleObjects
---                       , multiplicity (x `tensorSO` y) so == 1]
-
 tensorInv :: SimpleObject -> [(SimpleObject, SimpleObject)]
 tensorInv M = (zipWith (,) (map AE group) (repeat M))
               ++ (zipWith (,) (repeat M) (map AE group))
@@ -1102,17 +1113,12 @@ tensorInv (AE g0) = [(AE $ g0 `plus` g, AE $ invert g) | g <- group]
                     ++ [(M,M)]
 
 
--- Given an additive function $f$ on objects, 
-tensorInv2 :: (Num a) =>  (SimpleObject -> SimpleObject -> a) -> SimpleObject -> [a]
-tensorInv2 f so = map (uncurry f) $ tensorInv so
-
-
 tensorO :: Object -> Object -> Object
 tensorO o1 o2 = object $
      let jointMultiplicity a b
            = (multiplicity o1 a) * (multiplicity o2 b)
      in
-       sum . tensorInv2 jointMultiplicity
+       sum . map (uncurry jointMultiplicity) . tensorInv
 
 
 -- Go through the direct sum of simple objects in the domain and range
@@ -1123,7 +1129,7 @@ tensorM m1 m2 =
   in
     morphism (tensorO (domain m1) (domain m2))
     (tensorO (codomain m1) (codomain m2))
-    (foldl directSum emptyMatrix . (tensorInv2 kron))
+    (foldl directSum emptyMatrix . (map (uncurry kron) . tensorInv))
 
 
 linearize :: ([SimpleObject] -> M.Matrix Scalar) -> [Object] -> M.Matrix Scalar
@@ -1403,8 +1409,7 @@ allInitialLabels = map (\x y -> x !! (fromEnum y))
 -- toCodomainSO il =
 --   substO il $ treeLabel (objectLabel initialColoredGraph) (initialEdgeTree $ IV Main)
 
--- TODO: modify other functions to take non-simpleObject labels
--- and remove this function
+--FIXME: use this function to define an order on BasisElement
 toCodomain :: (InitialEdge -> Object) -> Object
 toCodomain il =
  (star $ il RightLoop)
@@ -1426,6 +1431,16 @@ data BasisElement = BasisElement
   { initialLabel :: InitialEdge -> SimpleObject
   , oneIndex :: Int
   }
+
+instance Eq BasisElement where
+  be1 == be2 =
+    (and $
+    map (\ie ->
+            initialLabel be1 ie == initialLabel be2 ie)
+    (allElements :: [InitialEdge])
+    )
+    && oneIndex be1 == oneIndex be2   
+
 
 morphismFromBE :: BasisElement -> Morphism
 morphismFromBE basisElement =
@@ -1481,4 +1496,57 @@ morphismSet codomain0 =
 answer = map finalMorphism (allElements :: [BasisElement])
 
 
+-- Given a morphism and a choice of indexed simple object for each edge,
+-- return the list of scalars corresponding to that subspace
+-- component :: BasisElement -> BasisElement -> (InitialEdge -> (SimpleObject, Int)) -> [Scalar]
+-- component m oTree oneIndex0 = 
+
+
+multiplicityBE :: (InitialEdge -> Object) -> BasisElement -> Int
+multiplicityBE label0 be0 =
+  product 
+  [multiplicity (label0 initialEdge0) (initialLabel be0 initialEdge0)
+  | initialEdge0 <- allElements]
+
+-- translate the final basis oneIndex into an index for the final object
+decomposeH :: BasisElement -> BasisElement -> [Int]
+decomposeH initialBe finalBe = 
+  let
+    label0 = (objectLabel $ finalSN initialBe) . newInitialEdge
+    beIndex = case (L.elemIndex finalBe allElements) of
+      Just i -> i
+      Nothing -> error "decomposeH impossible branch"
+    increment = multiplicity (codomain $ morphismFromBE finalBe) one
+    base = sum $ map (multiplicityBE label0)
+         (take beIndex (allElements :: [BasisElement]))
+  in
+    [ base + (oneIndex finalBe) + increment*i
+    | i <- [0..(multiplicityBE label0 finalBe - 1)]]
+
+    
+
+decompose :: BasisElement -> BasisElement -> Scalar
+decompose initialBe finalBe =
+  sum $ map (\i -> 
+               (subMatrix (finalMorphism initialBe) one) M.! (i, 1)
+            )
+  $ decomposeH initialBe finalBe
+  
+
+
+-- A basis element should really include labellings of internal edges
+-- tensorTreeToIndex :: T.Tree (Object, SimpleObject, Int) -> SimpleObject -> Int
+-- tensorTreeToIndex (Leaf (o, so, i)) so2 = if multiplicity o so2 > i
+--                                           then (o, so, i)
+--                                           else error "Index out of bounds"
+-- tensorTreeToIndex (Node a b) =
+--   let
+--     (o1, so1, i1) = tensorTreeToIndex a
+--     (o2, so2, i2) = tensorTreeToIndex b
+--     so1s = map fst (tensorInv so)
+--     so2s = map snd (tensorInv so)
+--            zipWith (,) (map (tensorTreeToIndex a) so1s)
+--                (map (tensorTreeToIndex b) so2s)
+--   in
+--     dropWhile (\(a,b) -> multiplicity )
 

@@ -1296,14 +1296,17 @@ coev o =
 
 ev :: Object -> Morphism
 ev o =
-  let domain0 = o `tensorO` (star o) in        
+  let
+    domain0 = o `tensorO` (star o)
+    mSquares = (multiplicity o M)^2
+  in        
     morphism domain0 (toObject one)
     $ \so ->
         if so == one
         then M.fromLists $
-        [L.replicate ((multiplicity domain0 one) - multiplicity o M) 1
+        [L.replicate ((multiplicity domain0 one) - mSquares) 1
          ++
-         L.replicate (multiplicity o M) tauI
+         L.replicate mSquares tauI
         ]
         else emptyMatrix
      

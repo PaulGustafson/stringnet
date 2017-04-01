@@ -10,6 +10,20 @@ import qualified Data.List as L
 order :: Int
 order = 2
 
+-- Show for order 2 group
+instance Show Scalar where
+  show s = (case () of
+              _ | (coeff s) !! 1 == 0 -> show $ (coeff s) !! 0
+                | (coeff s) !! 0 == 0 -> "-" ++ (show $ (coeff s) !! 1)
+                | otherwise -> error "Show scalar leftover case"
+           ) ++
+           (case () of
+              _ | getSum (tauExp s) == 0 -> ""
+                | getSum (tauExp s) == -1 -> "\\sqrt{2}"
+                | otherwise ->
+                  "*2^{-" ++ (show $ getSum $ tauExp s) ++ "/2}"
+           )
+
 -- \pm 1
 nu :: Scalar
 nu = 1
@@ -38,12 +52,13 @@ plus = mappend
 
 newtype RootOfUnity = RootOfUnity AElement deriving (Eq, Monoid, Group)
 
--- A scalar is an algebraic integer over the cyclotomic field corresponding
--- to the order of the group.
+-- A scalar is an algebraic integer over the cyclotomic field
+-- corresponding to the order of the group.  Normal form:  tauExp > -1
 data Scalar =  Scalar 
   { coeff :: ![Int]
   , tauExp :: !(Sum Int)
-  } deriving (Show, Eq)
+  } deriving (Eq)
+
 
 tau :: Scalar
 tau =

@@ -1428,8 +1428,8 @@ toCodomain il =
 -- Basis element for the stringnet space corresponding to
 -- initial and final configurations
 data BasisElement = BasisElement
-  { initialLabel :: InitialEdge -> SimpleObject
-  , oneIndex :: Int
+  { initialLabel :: !(InitialEdge -> SimpleObject)
+  , oneIndex :: !Int
   } deriving (Show)
 
 instance Eq BasisElement where
@@ -1520,7 +1520,7 @@ decomposeH initialBe finalBe =
     base = sum $ map (multiplicityBE label0)
          (take beIndex (allElements :: [BasisElement]))
   in
-    [ base + (oneIndex finalBe) + increment*i
+    [ base + increment*i
     | i <- [0..(multiplicityBE label0 finalBe - 1)]]
 
     
@@ -1531,7 +1531,18 @@ decompose initialBe finalBe =
                (subMatrix (finalMorphism initialBe) one) M.! (i + 1, 1)
             )
   $ decomposeH initialBe finalBe
-  
+
+decompose2 i j = decompose (allElements !! (i-1)) (allElements !! (j-1))
+
+rmatrix :: M.Matrix Scalar
+rmatrix =
+  let
+    size0 = length (allElements :: [BasisElement])
+  in
+    M.matrix size0 size0
+    (\(i,j) -> decompose2 i j)
+                          
+
 
 
 -- A basis element should really include labellings of internal edges

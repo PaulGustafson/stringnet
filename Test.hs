@@ -11,13 +11,26 @@ import Algebra
 
 obj = (toObject M) `TY.tensorO` (toObject M) `TY.tensorO` (toObject M)
 
--- snake equations
+notOne = toObject $ AE $ AElement 1
+
+-- a snake equation
 snake o = idMorphism o == ((ev o) `TY.tensorM` (idMorphism o))
-  `TY.compose` alpha o o o
+  `TY.compose` (alpha o o o)
   `TY.compose` ((idMorphism o) `TY.tensorM` (coev o))
 
 
+pentagonLHS a b c d =
+  (alpha a b (c `TY.tensorO` d))
+  `TY.compose` (alpha (a `TY.tensorO` b) c d)
 
+pentagonRHS a b c d =
+  ((alpha a b c) `tensorM` (idMorphism d))
+  `TY.compose` (alpha a (b `TY.tensorO` c) d)
+  `TY.compose` ((alpha a b c) `tensorM` idMorphism d)
+
+pentagon a b c d = (pentagonLHS a b c d) == (pentagonRHS a b c d)
+  
+  
 
 
 -- 81 is interesting 

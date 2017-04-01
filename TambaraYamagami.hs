@@ -952,8 +952,8 @@ data Morphism = Morphism
   
   -- the only morphisms between simple objects are identity morphisms
   , subMatrix_ :: ![M.Matrix Scalar]
-  }
-
+  } deriving (Eq)
+  
 subMatrix :: Morphism -> SimpleObject -> M.Matrix Scalar
 subMatrix m so = (subMatrix_ m) !! (toIndex so)
 
@@ -1280,7 +1280,7 @@ coev o =
     $ \so ->
         if so == one
         -- other components are 0, so get killed during composition
-        then M.fromLists [[1]]  
+        then M.fromLists $ L.replicate (multiplicity codomain0 one) [1]
         else emptyMatrix      
 
 -- ev :: SimpleObject -> Morphism
@@ -1301,11 +1301,9 @@ ev o =
     $ \so ->
         if so == one
         then M.fromLists $
-        [[  -- TODO: double check this
-            if multiplicity o M > 0
-            then tauI
-            else 1
-         ]
+        [L.replicate ((multiplicity domain0 one) - multiplicity o M) 1
+         ++
+         L.replicate (multiplicity o M) tauI
         ]
         else emptyMatrix
      

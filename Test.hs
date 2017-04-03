@@ -11,6 +11,8 @@ import Algebra
 
 obj = (toObject M) `TY.tensorO` (toObject M) `TY.tensorO` (toObject M)
 
+m = toObject M
+o = toObject one
 notOne = toObject $ AE $ AElement 1
 
 -- a snake equation
@@ -18,16 +20,18 @@ snake o = idMorphism o == ((ev o) `TY.tensorM` (idMorphism o))
   `TY.compose` (alpha o o o)
   `TY.compose` ((idMorphism o) `TY.tensorM` (coev o))
 
-
+-- ((ab)c)d) -> (ab)(cd) -> a(b(cd))
 pentagonLHS a b c d =
   (alpha a b (c `TY.tensorO` d))
   `TY.compose` (alpha (a `TY.tensorO` b) c d)
 
+-- ((ab)c)d -> (a(bc))d -> a((bc)d) -> a(b(cd))
 pentagonRHS a b c d =
-  ((alpha a b c) `tensorM` (idMorphism d))
+  ((idMorphism a) `tensorM` (alpha b c d))
   `TY.compose` (alpha a (b `TY.tensorO` c) d)
   `TY.compose` ((alpha a b c) `tensorM` idMorphism d)
 
+--FIXME: pentagon m m m m
 pentagon a b c d = (pentagonLHS a b c d) == (pentagonRHS a b c d)
   
   

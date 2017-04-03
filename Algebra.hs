@@ -12,18 +12,20 @@ order = 2
 
 -- Show for order 2 group
 instance Show Scalar where
-  show s = (case () of
-              _ | (coeff s) !! 1 == 0 -> show $ (coeff s) !! 0
-                | (coeff s) !! 0 == 0 -> "-" ++ (show $ (coeff s) !! 1)
-                | otherwise -> error "Show scalar leftover case"
-           ) ++
-           (case () of
-              _ | getSum (tauExp s) == 0 -> ""
-                | getSum (tauExp s) == -1 -> "\\sqrt{2}"
-                | otherwise ->
-                  "*2^{-" ++ (show $ getSum $ tauExp s) ++ "/2}"
-           )
-
+  show s0 =
+    let s = normalize s0 in
+      (case () of
+         _  | (coeff s) !! 1 == 0 -> show $ (coeff s) !! 0
+            | (coeff s) !! 0 == 0 -> "-" ++ (show $ (coeff s) !! 1)
+            | otherwise -> error "Show scalar leftover case"
+      ) ++
+      (case () of
+          _ | getSum (tauExp s) == 0 -> ""
+            | getSum (tauExp s) == -1 -> "\\sqrt{2}"
+            | otherwise ->
+                "*2^{-" ++ (show $ getSum $ tauExp s) ++ "/2}"
+      )
+  
 -- \pm 1
 nu :: Scalar
 nu = 1
@@ -85,7 +87,7 @@ convolve hs xs =
 
 -- Reduce \sum_{i=0}^{p-1} \zeta^i = 0
 normalize :: Scalar -> Scalar
-normalize s = normalize3 $ normalize2 $ Scalar
+normalize s = normalize4 $ normalize3 $ normalize2 $ Scalar
   { coeff = if order /= 1
             then map (\x -> x - minimum (coeff s)) (coeff s)
             else coeff s
@@ -114,7 +116,13 @@ normalize3 s =
        , tauExp = (tauExp s) + 2
        }
   else s
-  
+
+-- Get rid of tauExps for 0 
+normalize4 :: Scalar -> Scalar
+normalize4 s =
+  if and $ map (== 0) $ coeff s
+  then Scalar (replicate order 0) 0
+  else s
 
 -- Use the fact that \zeta^n = 1 to reduce after convolution
 reduce :: [Int] -> [Int]
@@ -125,19 +133,53 @@ reduce xs =
 
 isZero :: Scalar -> Bool
 isZero s = and $ map (== 0) $ coeff s
-       
+
+-- Assuming even offset of tauExps
+matchTauExps :: Scalar -> Scalar -> (Scalar, Scalar)
+matchTauExps s1 s2 =
+  let
+    t1 = getSum $ tauExp s1
+    t2 = getSum $ tauExp s2
+  in
+    if (t1 - t2) `mod` 2 == 0
+    then
+       case () of
+         _ | t1 == t2 -> (s1, s2)
+           | t1 < t2  -> (Scalar
+                          { coeff =
+                            map (* order^((t2 - t1) `div` 2))
+                            $ coeff s1
+                          , tauExp = Sum t2
+                          }
+                         ,
+                           s2
+                         )
+           | t1 > t2  -> (s1
+                         ,
+                          Scalar
+                          { coeff =
+                            map (* order^((t1 - t2) `div` 2))
+                            $ coeff s1
+                          , tauExp = Sum t1
+                          }
+                         )
+    else error "Odd tauExp offset unimplemented"
+  
+           
 instance Num Scalar where
-  s1 + s2 = normalize $ case () of
-    _ | (tauExp s1 == tauExp s2) ->
-        Scalar
-        { coeff = zipWith (+) (coeff s1) (coeff s2)
-        , tauExp = tauExp s1
-        }
-      | isZero s1 -> s2
+  s1 + s2 =
+    normalize $ case () of
+    _ | isZero s1 -> s2
       | isZero s2 -> s1
-      | otherwise ->  error $
-        "Can't add; tauExponents don't match for " 
-         ++ (show  s1) ++ " and " ++ (show s2)
+      | otherwise ->
+        let
+          (sn1, sn2) = matchTauExps s1 s2
+        in
+          Scalar
+          { coeff = zipWith (+) (coeff sn1) (coeff sn2)
+          , tauExp = tauExp sn1
+          }
+          
   s1 * s2 = normalize $  Scalar {
     coeff = reduce $ convolve (coeff s1) (coeff s2)
     , tauExp = (tauExp s1) + (tauExp s2)

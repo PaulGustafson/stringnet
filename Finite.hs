@@ -1,7 +1,4 @@
 
-
-
-
 module Finite where
 
     

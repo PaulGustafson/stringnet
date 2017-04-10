@@ -145,6 +145,7 @@ idMorphism o = scalarMorphism o 1
 --     Morphism [TauMatrix  (M.diagonal 0
 --                          $ V.fromList ([1] ++ replicate (len - 1) 0)) 0]
 
+emptyMatrix :: M.Matrix Scalar
 emptyMatrix = M.matrix 0 0 undefined
 
 
@@ -157,8 +158,7 @@ groupObject =
 
 groupSum :: (AElement -> Scalar) -> Morphism
 groupSum f =  --M.diagonal 0 $ V.generate order (f . AElement)
-  morphism groupObject groupObject $ 
-  M.diagonalList 0 $ map f allElements
+  morphism groupObject groupObject $ M.diagonal 0 $ V.fromList $ map f allElements
 
 
 -- Turn a scalar function on A \times A into a matrix
@@ -247,16 +247,18 @@ tensorM m1 m2 =
   (tensorO (codomain m1) (codomain m2))
   $ kronecker (matrix m1) (matrix m2)
 
-linearize2 :: (SimpleObject -> SimpleObject -> M.Matrix Scalar)
-  -> (Object -> Object -> M.Matrix Scalar)
-linearize2 f o1 o2 =
-  Object [f s t |  s <- simples o1, t <- simples o2]
+ 
+-- linearize2 :: (SimpleObject -> SimpleObject -> M.Matrix Scalar)
+--   -> (Object -> Object -> M.Matrix Scalar)
+-- linearize2 f o1 o2 =
+--   Object [f s t |  s <- simples o1, t <- simples o2]
 
 
+-- Morphism: (o1 \otimes o2) \otimes o3 \to o1 \otimes (o2 \otimes o3)
 linearize3 :: (SimpleObject -> SimpleObject -> SimpleObject -> M.Matrix Scalar)
   -> (Object -> Object -> Object -> M.Matrix Scalar)
 linearize3 f o1 o2 o3 = 
-  Object [f s t u |  s <- simples o1, t <- simples o2, u <- simples o3]
+  foldl directSum emptyMatrix [f s t u |  s <- simples o1, t <- simples o2, u <- simples o3]
 
 
 alphaSO :: SimpleObject -> SimpleObject -> SimpleObject -> Morphism
@@ -265,15 +267,15 @@ alphaSO (AE _) (AE _) M = idMorphism $ toObject M
 alphaSO M (AE _) (AE _) = idMorphism $ toObject M
 alphaSO (AE a) M (AE b) = scalarMorphism (toObject M) (chi a b)
 alphaSO (AE a) M M =
-  morphism groupObject (map (AE . (mappend a)) group)
-  $ matrix order order
+  morphism groupObject (Object (map (AE . (mappend a)) group))
+  $ M.matrix order order
   $ \(i,j) -> 
       if (AElement i) `mappend` a == AElement j
       then 1
       else 0        
 alphaSO M M (AE a) =
-    morphism (map (AE . (mappend a)) group) groupObject
-  $ matrix order order
+    morphism (Object $ map (AE . (mappend a)) group) groupObject
+  $ M.matrix order order
   $ \(i,j) -> 
       if (AElement i)  == AElement j `mappend` a
       then 1
@@ -287,19 +289,17 @@ alphaSO M M M =
           AE _ -> 0
           M    -> order
   in
-    morphism domain0 domain0 $ \so ->
-        case so of
-          M ->  toMatrix $ \x y -> tau * chiI x y
-          AE _ -> emptyMatrix
+    morphism domain0 domain0 $ toMatrix $ \x y -> tau * chiI x y
 
+-- TODO: Double-check this
 alpha :: Object -> Object -> Object -> Morphism
 alpha o1 o2 o3 =
   morphism ((o1 `tensorO` o2) `tensorO` o3)
   (o1 `tensorO` (o2 `tensorO` o3))
-  $ \so ->
-      linearize3 (\so1 so2 so3 ->
-                    matrix (alphaSO so1 so2 so3))
-      o1 o2 o3
+  $ linearize3 (\so1 so2 so3 ->
+                  matrix (alphaSO so1 so2 so3)
+               )
+  o1 o2 o3
 
 alphaISO :: SimpleObject -> SimpleObject -> SimpleObject -> Morphism
 alphaISO (AE g1) (AE g2) (AE g3) = idMorphism $ toObject $ AE $ g1 `mappend` g2 `mappend` g3
@@ -318,10 +318,8 @@ alphaISO M M M =
           M    -> order
   in
      morphism domain0 domain0
-     $ \so ->
-        case so of
-          M    -> toMatrix $ \x y -> tauI * chi x y
-          AE _ -> emptyMatrix
+     $ toMatrix $ \x y -> tauI * chi x y
+       
     
 
 alphaI :: Object -> Object -> Object -> Morphism
@@ -329,10 +327,9 @@ alphaI o1 o2 o3 =
   morphism
    (o1 `tensorO` (o2 `tensorO` o3))
    ((o1 `tensorO` o2) `tensorO` o3)
-   $ \so ->
-       linearize3 (\so1 so2 so3 ->
+   $ linearize3 (\so1 so2 so3 ->
                     matrix (alphaISO so1 so2 so3))
-       o1 o2 o3
+   o1 o2 o3
 
 
 -- coevSO :: SimpleObject -> Morphism
@@ -356,11 +353,7 @@ coev o =
     morphism
     (toObject one)
     (codomain0)
-    $ \so ->
-        if so == one
-        -- other components are 0, so get killed during composition
-        then M.fromLists $ L.replicate (multiplicity codomain0 one) [1]
-        else emptyMatrix      
+    $ M.fromLists $ L.replicate (multiplicity codomain0 one) [1]
 
 -- ev :: SimpleObject -> Morphism
 -- ev M =  Morphism
@@ -380,14 +373,11 @@ ev o =
     mSquares = (multiplicity o M)^2
   in        
     morphism domain0 (toObject one)
-    $ \so ->
-        if so == one
-        then M.fromLists $
-        [L.replicate ((multiplicity domain0 one) - mSquares) 1
-         ++
-         L.replicate mSquares tauI
-        ]
-        else emptyMatrix
+    $ M.fromLists $
+    [L.replicate ((multiplicity domain0 one) - mSquares) 1
+     ++
+     L.replicate mSquares tauI
+    ]
      
     
 -- pivotalJSO :: SimpleObject -> Morphism
@@ -398,14 +388,15 @@ ev o =
 
 pivotalJ :: Object -> Morphism
 pivotalJ o =
-  morphism o o $ \so ->
+  morphism o o $
       M.diagonal 0
-      (V.replicate (multiplicity o so) $
-        case so of
-          M -> nu
-          AE _ -> 1
-      )
-      
+      (V.fromList
+       $ map (\so -> case so of
+                       M -> nu
+                       AE _ -> 1
+             )
+        $ simples o
+      )       
 
 -- pivotalJISO :: SimpleObject -> Morphism
 -- pivotalJISO = pivotalJSO

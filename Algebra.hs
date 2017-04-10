@@ -2,6 +2,7 @@
 
 module Algebra where
 
+import Finite
 import Data.Group
 import Data.Semigroup
 import qualified Data.List as L
@@ -33,6 +34,17 @@ nu = 1
 -- Group element, assuming cyclicity
 newtype AElement = AElement Int deriving (Show)
 
+instance Finite AElement where
+  allElements = Prelude.map AElement [0..(order - 1)]
+
+
+-- Carrier set for the group
+-- Deprecated and redundant
+group :: [AElement]
+group = Prelude.map AElement [0..(order - 1)]
+
+
+
 instance Eq AElement where
   (AElement a) == (AElement b) = (a `mod` order) == (b `mod` order)
 
@@ -42,10 +54,6 @@ instance Monoid AElement where
     
 instance Group AElement where
   invert (AElement e) = AElement  $ (-e) `mod` order
-
--- Carrier set for the group
-group :: [AElement]
-group = Prelude.map AElement [0..(order - 1)]
 
 -- Nicer synonym for the group operation
 plus :: AElement -> AElement -> AElement

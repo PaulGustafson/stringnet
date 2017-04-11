@@ -8,26 +8,6 @@
 -- standard (anti-diagrammatic) order.
 --
 --
--- TODO: Refactor so that constructors are lower case methods
---       Uppercase should be destructors only
---
--- TODO: Calculate an actual R-matrix of a simple TY category.
---
--- TODO: Style refactoring
---     - comment top-level (exported) functions
---     - consistent use of State Stringnet
---     
--- TODO: Make all functions total
---       - Get rid of toIV type casts
---
--- TODO: factor TwoComplex out of Stringnet
---
--- TODO: unit tests
---
--- Ideas: Make a LocalMoves type.
---        Add left duals
---        Refactor using Simplex n
---
 
 module Stringnet where
 
@@ -38,7 +18,6 @@ import           Data.Semigroup
 import qualified Data.Tree as T
   
 
--- TODO: Move these types  into TwoComplex
 
 -- Left and right refer to positions before the braiding operation
 data Puncture = LeftPuncture | RightPuncture

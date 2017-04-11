@@ -11,25 +11,7 @@
 -- Kenichi Shimizu. Frobenius-Schur indicators in Tambara-Yamagami
 -- categories.
 --
--- TODO: Do everything wrt two complexes
---
--- TODO: Actually calculate the $R$ matrix wrt to basis of simple
--- objects.  
---
--- TODO: Optimization: Keep objects/morphisms as tensor products.
--- Calculate compositions factorwise if possible.
---
--- TODO: Extract Stringnet typeclass
---
--- TODO: Use sums instead of direct sum at appropriate times
---
--- TODO: Dehackify ev method.
---
--- TODO: Write unit tests for important methods.
---
--- TODO: Write Num instances.
---
---
+
 
 
 module TambaraYamagami where

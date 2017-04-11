@@ -1,0 +1,39 @@
+-- Actually calculate the $R$ matrix wrt to basis of simple
+-- objects.  
+--
+-- Do everything wrt two complexes
+--
+--
+-- Optimization: Keep objects/morphisms as tensor products.
+-- Calculate compositions factorwise if possible.
+--
+-- Extract Stringnet typeclass
+--
+-- Use sums instead of direct sum at appropriate times
+--
+-- Dehackify ev method.
+--
+-- Write unit tests for important methods.
+--
+-- Write Num instances.
+--
+-- Refactor so that constructors are lower case methods
+--       Uppercase should be destructors only
+--
+-- Calculate an actual R-matrix of a simple TY category.
+--
+-- Style refactoring
+--     - comment top-level (exported) functions
+--     - consistent use of State Stringnet
+--     
+-- Make all functions total
+--       - Get rid of toIV type casts
+--
+-- Factor TwoComplex out of Stringnet
+--
+-- unit tests
+--
+-- Ideas: Make a LocalMoves type.
+--        Add left duals
+--        Refactor using Simplex n
+--

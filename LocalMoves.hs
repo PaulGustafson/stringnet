@@ -20,8 +20,6 @@ import Tree
 import TambaraYamagami
 
 
-
-
 -- Tree corresponding to a summand of a vertex-morphism's codomain
 data InternalTree = ILeaf Edge SimpleObject
                   | INode SimpleObject InternalTree InternalTree
@@ -658,8 +656,7 @@ associateL v0 subTree@(Node x yz) =
                then newEdgeTree
                else edgeTree sn v
                     
-           , colorCoeff = (\sc ->
-               )
+           , colorCoeff = undefined --(\sc ->
            }
         )
 
@@ -686,11 +683,13 @@ associateR v0 subTree@(Node xy z) =
                          then newEdgeTree
                          else edgeTree sn v
                               
-                     , morphismLabel = \v ->
-                         if v == v0
-                         then compose (morphism)
-                              (morphismLabel sn v)
-                         else morphismLabel sn v
+                     , colorCoeff = undefined
+
+                       -- morphismLabel = \v ->
+                       --   if v == v0
+                       --   then compose (morphism)
+                       --        (morphismLabel sn v)
+                       --   else morphismLabel sn v
                      }
                   )
 
@@ -749,12 +748,14 @@ zRotate v0 =
             )
             $ edgeTree sn v
           
-        ,  morphismLabel = \v ->
-            if v == v0 
-            then case (edgeTree sn (IV v0)) of
-              Node y (Leaf x) ->
-                zMorphism (objectLabel sn x) (treeLabel (objectLabel sn) y) (morphismLabel sn v)
-           else morphismLabel sn v
+        , colorCoeff = undefined
+
+          -- morphismLabel = \v ->
+           --  if v == v0 
+           --  then case (edgeTree sn (IV v0)) of
+           --    Node y (Leaf x) ->
+           --      zMorphism (objectLabel sn x) (treeLabel (objectLabel sn) y) (morphismLabel sn v)
+           -- else morphismLabel sn v
         }
       )
   )
@@ -911,16 +912,18 @@ contractHelper contractedEdge  = state $ \sn ->
                     else edgeTree sn v
 
 
-                , morphismLabel = (\v -> if (v == composition) 
-                                         then  compose ((idMorphism $ treeLabel (objectLabel sn) (leftSubTree $ edgeTree sn $ IV v0))
-                                                       `tensorM`
-                                                         (ev $ objectLabel sn contractedEdge)
-                                                         `tensorM`
-                                                        (idMorphism $ treeLabel (objectLabel sn) (rightSubTree $ edgeTree sn $ IV v1))
-                                                       )
-                                               (tensorM (morphismLabel sn v0)
-                                                (morphismLabel sn v1))
-                                         else morphismLabel sn v )
+                , colorCoeff = undefined
+
+                  -- morphismLabel = (\v -> if (v == composition) 
+                  --                        then  compose ((idMorphism $ treeLabel (objectLabel sn) (leftSubTree $ edgeTree sn $ IV v0))
+                  --                                      `tensorM`
+                  --                                        (ev $ objectLabel sn contractedEdge)
+                  --                                        `tensorM`
+                  --                                       (idMorphism $ treeLabel (objectLabel sn) (rightSubTree $ edgeTree sn $ IV v1))
+                  --                                      )
+                  --                              (tensorM (morphismLabel sn v0)
+                  --                               (morphismLabel sn v1))
+                  --                        else morphismLabel sn v )
 
                 , perimeter = \d -> [e | e <- perimeter sn d
                                        , e /= contractedEdge
@@ -970,10 +973,12 @@ connect e1 e2 d = state $ \sn ->
             | otherwise -> perimeter sn d0
       
         -- Find index of objectlabels
-      , morphismLabel = \v -> case () of
-          _ | v == toIV (start e1 sn) -> morphism1 <> morphismLabel sn v
-            | v == toIV (start e2 sn) -> morphism2 <> morphismLabel sn v
-            | otherwise               -> morphismLabel sn v
+      , colorCoeff = undefined
+
+        -- morphismLabel = \v -> case () of
+        --   _ | v == toIV (start e1 sn) -> morphism1 <> morphismLabel sn v
+        --     | v == toIV (start e2 sn) -> morphism2 <> morphismLabel sn v
+        --     | otherwise               -> morphismLabel sn v
           
       }
   )
@@ -1005,11 +1010,10 @@ addCoev e = state $ \sn ->
                                              else es
                                           ) . (map return) . perimeter sn
 
-                , morphismLabel = \v -> if v == mp
-                                        then coev $ objectLabel sn e
-                                        else morphismLabel sn v
-
-                
+                , colorCoeff = undefined
+                  -- morphismLabel = \v -> if v == mp
+                  --                       then coev $ objectLabel sn e
+                  --                       else morphismLabel sn v                
                 }
 
   )

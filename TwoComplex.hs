@@ -130,4 +130,13 @@ indexE tc e = case elemIndex e (edges tc) of
   Just i -> i
   Nothing -> error "indexE: edge not found"
 
+endpoints :: Edge -> TwoComplex -> [Vertex]
+endpoints e tc = map (imageVertex tc) (initialEndpoints e)
+
+start :: Edge -> TwoComplex -> Vertex
+start e tc = (endpoints e tc) !! 0
+
+end :: Edge -> TwoComplex -> Vertex
+end e tc = (endpoints e tc) !! 1
+
 

@@ -12,7 +12,7 @@ Installation/Execution
 * Install [stack](https://docs.haskellstack.org/en/stable/README/)
 * Run the following commands from the stringnet base directory:
 ```
-stack unpack matrix
+stack unpack matrix-0.3.5.0
 stack setup
 stack build
 stack exec stringnet

@@ -6,6 +6,18 @@ The executable currently computes the representation of a braid
 generator in the Turaev-Viro-Barrett-Westbury TQFT representation in
 terms of the structural morphisms of an arbitrary spherical category.
 
+Installation/Execution
+----------------------
+* Clone the repository
+* Install [stack](https://docs.haskellstack.org/en/stable/README/)
+* Run the following commands from the stringnet base directory:
+```
+stack unpack matrix
+stack setup
+stack build
+stack exec stringnet
+```
+
 
 References and notes
 --------------------

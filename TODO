@@ -1,3 +1,11 @@
+Highest priority to lowest priority:
+
+Encode T matrix twist
+
+Encode Vec_{Z_N} data
+
+Calculate some verifiable modular data 
+
 Do everything wrt two complexes
    Write simple tests
 
@@ -34,3 +42,5 @@ Ideas: Make a LocalMoves type.
        Refactor using Simplex n
 
 Double-check InteriorVertex vs. Vertex typing
+
+Get rid of unpacking matrix (only used for profiling).

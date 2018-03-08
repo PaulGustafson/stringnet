@@ -6,6 +6,8 @@ Encode Vec_{Z_N} data
 
 Calculate some verifiable modular data 
 
+Calculate MCG(torus with one puncture)
+
 Do everything wrt two complexes
    Write simple tests
 

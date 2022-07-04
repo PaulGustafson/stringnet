@@ -5,6 +5,7 @@ A Haskell library for stringnet calculations
 The executable currently computes the representation of a braid
 generator in the Turaev-Viro-Barrett-Westbury TQFT representation in
 terms of the structural morphisms of an arbitrary spherical fusion category.
+See these [slides](https://www.paulpgustafson.com/indiana.pdf) for an overview of the research agenda and some examples.
 
 Installation/Execution
 ----------------------
